@@ -3,7 +3,8 @@
 // The change goes through the same two calls as a solve, so the scene and the
 // answer panel move to the new numbers together, and it comes back in the same
 // shape as /api/solve.
-import { editProblem, errorResponse, parseEditRequest, readRequestJson } from "@/lib/gemini";
+import { errorResponse, parseEditRequest, readRequestJson } from "@/lib/gemini";
+import { editProblem } from "@/lib/solver";
 
 export const runtime = "nodejs";
 // Three Gemini calls at 45s each is the worst case: solve, scene, repair.

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
+import ExplanationVideo from "@/components/ExplanationVideo";
 import StepsPanel, { activeStepIndex, StepDetail } from "@/components/StepsPanel";
 import Timeline from "@/components/Timeline";
 import VariableSliders from "@/components/VariableSliders";
@@ -81,6 +82,7 @@ export default function Page() {
   const [values, setValues] = useState<Record<string, number>>(() => initialValues(presets.projectile));
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [view, setView] = useState<"simulation" | "video">("simulation");
   const [speed, setSpeed] = useState(1);
   const [muted, setMuted] = useState(true);
   const [shots, setShots] = useState(true);
@@ -451,6 +453,8 @@ export default function Page() {
 
       <div className="modebar">
         <span className="mode-label">Simulate in 3D</span>
+        <button className="btn btn-quiet" type="button" aria-pressed={view === "video"} onClick={() => {setView("video");setPlaying(false);}}>Watch explanation</button>
+        <button className="btn btn-quiet" type="button" aria-pressed={view === "simulation"} onClick={() => setView("simulation")}>Interactive simulation</button>
         <button className="btn btn-primary" type="button" onClick={() => document.getElementById("chalk-problem")?.focus()}>Give a problem</button>
           <label className="field scene-picker">
             <span>Scene</span>
@@ -477,6 +481,7 @@ export default function Page() {
 
       <main className="workspace">
         <div className="primary">
+          <div hidden={view !== "simulation"}>
           {prepared.error || !live || !compiled ? (
             <div className="stage">
               <div className="board-fallback" role="alert">
@@ -588,12 +593,14 @@ export default function Page() {
               />
             </>
           )}
+          </div>
 
           {notice ? (
             <p className="notice" role="status">
               {notice}
             </p>
           ) : null}
+          <div hidden={view !== "video"}>{live && compiled ? <ExplanationVideo scene={live} values={values} solution={solution} /> : null}</div>
           {prepared.warnings.length > 0 ? (
             <p className="notice notice-warn" role="status">
               Scene warnings: {prepared.warnings.join(" ")}

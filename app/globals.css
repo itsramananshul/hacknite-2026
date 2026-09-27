@@ -860,3 +860,8 @@ body { background-image: none; }
 @media (max-width:999px) { .inspector { border-left: 0; border-top: 1px solid var(--line); } .tagline { display: none; } .modebar { padding: 8px; } .scene-picker { margin-left: 0; } .stage { min-height: 360px; height: 55dvh; } .stages .stage { min-height: 300px; height: 40dvh; } .answer-paper { margin: 16px; } }
 @media (max-width:450px) { .masthead { padding: 6px 10px; } .masthead-right .btn { padding: 0 10px; font-size: 13px; } .mode-label { display: none; } .scene-picker { flex: 1 1 100%; } .scene-picker select { width: 100%; } .modebar .btn { flex: 1; } .timeline { padding: 10px; } }
 .share-status { font-size: 12px; color: var(--chalk-dim); } .share-status:empty { display: none; }
+.explanation-video { padding: 20px; border-top: 1px solid var(--line); background: var(--board-deep); }
+.video-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.explanation-video h2 { margin: 0 0 6px; font-size: 20px; }
+.explanation-video p { color: var(--chalk-dim); line-height: 1.5; }
+.explanation-video video { display: block; width: 100%; aspect-ratio: 16/9; margin: 16px 0; background: var(--board); }

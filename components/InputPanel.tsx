@@ -22,7 +22,7 @@ const MAX_IMAGE_BYTES = 1.8 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 165_000;
 const QUALITIES = [0.9, 0.82, 0.72, 0.6, 0.5];
 const WORKING_STATUS =
-  "Gemini is reading the problem, solving it with a Python run, and building the animation. That usually takes under a minute.";
+  "Reading your problem, calculating the answer, and building the 3D scene.";
 
 function decodedBytes(dataUrl: string): number {
   const comma = dataUrl.indexOf(",");
@@ -244,7 +244,7 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
       setStatus(null);
       setError(
         ranOut
-          ? `Gemini did not answer within ${Math.round(REQUEST_TIMEOUT_MS / 1000)} seconds, so the request was stopped. Your problem is still here, press Solve again.`
+          ? `The solver did not answer within ${Math.round(REQUEST_TIMEOUT_MS / 1000)} seconds, so the request was stopped. Your problem is still here, press Solve again.`
           : "The request to the server did not finish. Your problem is still here, press Solve again.",
       );
     } finally {

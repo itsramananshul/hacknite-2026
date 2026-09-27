@@ -6,7 +6,8 @@ The interface follows the supplied Chalk design: a green board, handwritten word
 
 ## Features
 
-- Seven offline examples: projectile motion, a rough incline, an Atwood pulley, a circular orbit, elastic collision, ideal pipe flow, and a travelling wave.
+- Ten offline examples: projectile motion, a rough incline, an Atwood pulley, a circular orbit, elastic collision, ideal pipe flow, a travelling wave, damped springs, a source-free RLC circuit, and falling through a fluid with linear drag.
+- Separate explanation-video and interactive-simulation views. Generate a real MP4 with Manim: spoken explanation, typeset equations, a diagram following the checked motion, and final answers. Download the completed film.
 - 3D playback, trails, force and velocity arrows, connectors, camera shots, timeline scrubbing, and speed controls.
 - Adjustable parameters and recalculated answers without a model call.
 - Original and changed scenes on a shared timeline.
@@ -19,10 +20,10 @@ The interface follows the supplied Chalk design: a green board, handwritten word
 
 ## Run locally
 
-Install dependencies with `npm install`. Copy `.env.example` to `.env.local`, set a server-side `GEMINI_API_KEY`, and select an available Gemini model with `GEMINI_MODEL`. Production currently uses `gemini-3.6-flash`. Never put the key in a `NEXT_PUBLIC_` variable.
+Install dependencies with `npm install` and copy `.env.example` to `.env.local`. Sign in to your existing OpenCode Go account in OpenCode. The local solver uses DeepSeek V4 Flash for text and Kimi K2.6 for photos; Gemini is not required. Keep authentication in OpenCode's local account store, never in browser code.
 
 ```sh
-npm run dev
+npm run dev:opencode
 npm test
 npm run typecheck
 npm run build
@@ -30,9 +31,9 @@ npm run build
 
 ## Solver and scene checks
 
-`POST /api/solve` accepts problem text or a resized image. The first Gemini call uses code execution to compute numerical answers. The second returns a structured scene script with math expressions instead of executable rendering code. `POST /api/edit` re-solves the problem after the requested change using the same pipeline.
+`POST /api/solve` accepts problem text or a resized image. The first OpenCode model call returns a worked solution and constant arithmetic expressions. Chalk evaluates these expressions on the server to obtain numerical answers. The second call returns a structured scene script with math expressions instead of executable rendering code. `POST /api/edit` re-solves the problem after the requested change using the same pipeline. Each runtime session denies tools and is cleaned up when the request ends; problem text cannot invoke coding tools.
 
-Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. An invalid scene receives one repair attempt. A safe scene with a remaining answer mismatch carries a warning; an unsafe scene is withheld.
+Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. An invalid scene receives one repair attempt. The OpenCode path withholds a scene that remains invalid or disagrees with the calculated answers.
 
 These checks catch structural and numerical errors. They do not prove that an inferred physical model fits a problem. The examples use stated idealizations; the pipe example uses continuity and Bernoulli rather than a turbulence solver. New problems may produce an explanation or diagram that is less complete than a cached example.
 
@@ -40,10 +41,18 @@ These checks catch structural and numerical errors. They do not prove that an in
 
 React Three Fiber and drei render the scene. A compiled expression sampler drives objects, vectors, connectors, and answers. Comparison uses one shared clock. Paths are capped at 160 samples, and vector readouts refresh on a throttle. KaTeX displays the authored equations. If WebGL is unavailable, the interface keeps calculated answers and explanatory controls available.
 
+## Explanation videos
+
+Run `npm run setup:video` once to install the isolated Python/Manim runtime, then start the local app. Select **Watch explanation**, then **Generate explanation video**. Python, FFmpeg, and a TeX installation are needed for rendering and typeset equations. On Windows, installed System.Speech voices provide narration; other systems currently render written explanations without voice. The renderer uses a fixed Python template and validated sampled scene data, never generated Python code. Rendering runs in a background job and the MP4 appears when complete. Video generation currently runs locally, not on Vercel.
+
+The advanced examples implement specific analytic differential-equation models: underdamped viscous spring motion, underdamped source-free series RLC response, and linear fluid drag. They state initial conditions, idealizations and sign conventions. Circuit motion is a charge indicator rather than an electron trajectory. These are not universal solvers for turbulence, nonlinear systems, or arbitrary advanced physics.
+
 ## Validation
 
-The 126 tests cover unsafe expressions, scene references, numerical checks, slider ranges, projectile landing, incline motion, pulley motion, orbital relationships, collision conservation, ideal flow, and waves. Production build and TypeScript checks pass.
+Tests cover unsafe expressions, scene references, numerical checks, slider ranges, projectile landing, incline motion, pulley motion, orbital relationships, collision conservation, ideal flow, and waves. OpenCode integration tests additionally check constant answer calculation, denied tools, provider failures, and request cleanup. Run the commands above to validate your checkout.
 
 ## Deployment
 
-Deploy with `npx vercel deploy --prod` after configuring server environment variables in the linked project. Model quotas and API credit belong to the Google account; quota and billing failures are reported visibly, and cached examples remain usable. A Google 402 response requires available API credit or a different working key before live solving can succeed.
+The OpenCode bridge connects only to a server on the same computer. Run Chalk at `http://127.0.0.1:3000/` and keep the local OpenCode server running. The startup command starts or reuses the server on port 4098. Change the model IDs through the `OPENCODE_MODEL` and `OPENCODE_VISION_MODEL` environment variables. Usage follows your existing OpenCode account's limits.
+
+For an optional hosted Google backend, set `CHALK_SOLVER=gemini` and a server-side `GEMINI_API_KEY`. That path retains Google's code-execution solver. A Vercel deployment cannot reach your laptop's loopback OpenCode server. Install the Vercel CLI with `npm i -g vercel` for deployment, environment management, and logs. Never put provider keys in a `NEXT_PUBLIC_` variable.

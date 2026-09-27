@@ -1,3 +1,4 @@
+import { advancedPresets, advancedPresetList } from "./advanced-presets";
 import type {
   SceneAnswer,
   SceneCamera,
@@ -10,7 +11,7 @@ import type {
   SceneWorld,
 } from "./schema";
 
-export type PresetKey = "projectile" | "incline" | "atwood" | "orbit" | "collision" | "fluid" | "wave";
+export type PresetKey = "projectile" | "incline" | "atwood" | "orbit" | "collision" | "fluid" | "wave" | "damping" | "circuit" | "drag";
 
 const CHALK = "#e9e4d8";
 const MINT = "#9fe3bd";
@@ -1146,6 +1147,7 @@ export const wavePreset: SceneScript = {
 };
 
 export const presetList: Array<{ key: PresetKey; name: string; blurb: string }> = [
+  ...advancedPresetList,
   {
     key: "projectile",
     name: "Projectile off a cliff",
@@ -1184,6 +1186,7 @@ export const presetList: Array<{ key: PresetKey; name: string; blurb: string }> 
 ];
 
 export const presets: Record<PresetKey, SceneScript> = {
+  ...advancedPresets,
   projectile: projectilePreset,
   incline: inclinePreset,
   atwood: atwoodPreset,

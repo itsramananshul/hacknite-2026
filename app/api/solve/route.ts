@@ -4,7 +4,8 @@
 // verified solution into a Scene Script, and every failure leaves as the same
 // {error, code} body. The key is only ever read on the server, inside the
 // request, so nothing here runs at build time.
-import { errorResponse, parseSolveRequest, readRequestJson, solveProblem } from "@/lib/gemini";
+import { errorResponse, parseSolveRequest, readRequestJson } from "@/lib/gemini";
+import { solveProblem } from "@/lib/solver";
 
 export const runtime = "nodejs";
 // Three Gemini calls at 45s each is the worst case: solve, scene, repair.

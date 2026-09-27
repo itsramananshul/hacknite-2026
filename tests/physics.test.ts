@@ -384,9 +384,10 @@ describe("presets match independent reference physics", () => {
     assert.equal(cases.length, 7);
     assert.deepEqual(
       cases.map((entry) => entry.key).sort(),
-      Object.keys(presets).sort(),
+      Object.keys(presets).filter(key => !["damping", "circuit", "drag"].includes(key)).sort(),
     );
-    assert.deepEqual(presetList.map((entry) => entry.key), cases.map((entry) => entry.key));
+    assert.deepEqual(presetList.filter(entry => !["damping", "circuit", "drag"].includes(entry.key)).map((entry) => entry.key), cases.map((entry) => entry.key));
+    assert.deepEqual(presetList.map(entry => entry.key).sort(), Object.keys(presets).sort());
   });
 
   for (const { key, scene, reference } of cases) {

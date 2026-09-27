@@ -5,10 +5,12 @@
   "author": "Anshul Raman",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "dev:opencode": "node scripts/dev-opencode.mjs",
+    "setup:video": "node scripts/setup-video.mjs",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/physics.test.ts"
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.24.0",
