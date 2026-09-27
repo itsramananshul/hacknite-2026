@@ -29,7 +29,7 @@ export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,
         if(!response.ok) throw new Error(result.error || "Could not check the video.");
         setMessage(result.message);
         if(result.status!=="rendering") setStatus(result.status);
-        else timer=setTimeout(poll,2000);
+        else timer=setTimeout(poll,5000);
       }catch(error){if(!stopped){setStatus("error");setMessage(error instanceof Error?error.message:"Video status failed.");}}
     };
     void poll();

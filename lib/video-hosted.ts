@@ -4,6 +4,7 @@ import {start,getRun} from "workflow/api";
 import {videoWorkflow} from "./video-workflow";
 import {videoPayload} from "./video";
 import {RouteError} from "./gemini";
+import {Sandbox} from "@vercel/sandbox";
 
 export function videoClient(token:string){return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}});}
 export async function startHostedVideo(client:SupabaseClient,userId:string,scene:unknown,values:Record<string,number>,solution:string){
@@ -38,6 +39,14 @@ export async function hostedVideoStatus(client:SupabaseClient,userId:string,id:s
       data.status=result.status;data.message=result.message;data.narration=result.narration ?? false;
       const update=await client.from("video_jobs").update({status:data.status,message:data.message,narration:data.narration}).eq("user_id",userId).eq("id",id);
       if(update.error)throw new Error(update.error.message);
+    }else{
+      // Show actual progress without storing a user's session in the workflow.
+      try{
+        const sandbox=await Sandbox.get({name:`chalk-video-${id}`});
+        const buffer=await sandbox.readFileToBuffer({path:"/vercel/sandbox/video/status.json"});
+        const progress=buffer?JSON.parse(buffer.toString("utf8")):null;
+        if(progress?.status==="rendering" && typeof progress.message==="string")data.message=progress.message;
+      }catch{ /* Launch and cleanup may briefly leave no readable sandbox. */ }
     }
   }
   return data;
