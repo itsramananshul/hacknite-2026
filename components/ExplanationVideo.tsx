@@ -14,7 +14,7 @@ export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,
   const fingerprint=JSON.stringify({scene,values});
   const pending=useRef(false);
   useEffect(()=>{
-    if(savedJob && savedJob.id!==job){setJob(savedJob.id);setCaptured(savedJob.fingerprint);setStatus("rendering");}
+    if(savedJob && savedJob.id!==job){setJob(savedJob.id);setCaptured(savedJob.fingerprint);setMessage("");setStatus("rendering");}
   },[savedJob?.id]);
   useEffect(()=>{
     if(!job || status!=="rendering") return;
@@ -26,7 +26,7 @@ export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,
         const response=await authFetch(`/api/video/${job}`,{signal:controller.signal});
         const result=await response.json();
         if(stopped) return;
-        if(!response.ok) throw new Error(result.error || "Could not check the video.");
+        if(!response.ok) throw new Error(response.status===404?"This video has not reached cloud storage yet. Open the local Chalk app to upload the existing video, then select it again here. You do not need to regenerate it.":result.error || "Could not check the video.");
         setMessage(result.message);
         if(result.status!=="rendering") setStatus(result.status);
         else timer=setTimeout(poll,5000);
@@ -48,7 +48,7 @@ export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,
     finally{pending.current=false;}
   };
   return <section className="explanation-video" aria-label="Explanation video">
-    {savedVideos.length>1?<label className="nb-field">Saved videos<select className="nb-input" aria-label="Saved videos" value={job ?? ""} onChange={event=>{const selected=savedVideos.find(video=>video.id===event.target.value);if(selected){setJob(selected.id);setCaptured(selected.fingerprint);setStatus("rendering");}}}>{savedVideos.map((video,index)=><option key={video.id} value={video.id}>Video {index+1}</option>)}</select></label>:null}
+    {savedVideos.length>1?<label className="nb-field">Saved videos<select className="nb-input" aria-label="Saved videos" value={job ?? ""} onChange={event=>{const selected=savedVideos.find(video=>video.id===event.target.value);if(selected){setJob(selected.id);setCaptured(selected.fingerprint);setMessage("");setStatus("rendering");}}}>{savedVideos.map((video,index)=><option key={video.id} value={video.id}>Video {index+1}</option>)}</select></label>:null}
     <div className="video-heading"><div><h2>Explanation video</h2><p>A narrated film of the problem, reasoning, equations, and answer.</p></div>
     <button type="button" className="btn btn-primary" disabled={status==="rendering"} onClick={generate}>{status==="rendering"?"Generating video…":job?"Generate a new video":"Generate explanation video"}</button></div>
     {message?<p role={status==="error"?"alert":"status"}>{message}</p>:null}

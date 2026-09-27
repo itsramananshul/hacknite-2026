@@ -41,7 +41,7 @@ export function videoPayload(raw:unknown, values:Record<string,number> = {}, sol
   return {scene:{...presentation.scene,steps:steps.map(step=>({...step,equations:step.equations.map(equationLatex)}))},pointIds:presentation.pointIds,motionPresentation:{rate:presentation.rate,frequencyHz:presentation.frequencyHz},frames,answers,values,solution};
 }
 
-export async function startVideo(raw:unknown,values:Record<string,number>,solution:string,ownerId?:string) {
+export async function startVideo(raw:unknown,values:Record<string,number>,solution:string,ownerId?:string,onReady?:(id:string)=>Promise<unknown>) {
   if(process.env.VERCEL) throw new RouteError(503,"video_local_only","Video rendering currently runs on your laptop. Open the local Chalk app to generate an MP4.");
   if(active.size>=2) throw new RouteError(429,"video_busy","Two videos are rendering. Wait for one to finish.");
   const python=process.env.CHALK_VIDEO_PYTHON || join(process.cwd(),".chalk-work","video-venv",process.platform==="win32" ? "Scripts/python.exe" : "bin/python");
@@ -72,7 +72,12 @@ export async function startVideo(raw:unknown,values:Record<string,number>,soluti
   },600_000);
   child.on("error",error=>void finish(error.message));
   child.on("close",async code=>{
-    if(code===0){await finish();return;}
+    if(code===0){
+      await finish();
+      // Upload even if the browser was refreshed or closed during rendering.
+      try{await onReady?.(id);}catch{ /* The next authenticated local visit retries the upload. */ }
+      return;
+    }
     // Keep the renderer's actionable error; Python tracebacks belong in local logs.
     const status=await videoStatus(id).catch(()=>null);
     await finish(status?.status==="error" ? status.message : "Video rendering failed. Please retry the explanation video.");

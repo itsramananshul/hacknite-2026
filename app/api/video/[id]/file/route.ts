@@ -10,7 +10,9 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
   try {
     const {user,token}=await requireUser(request);
     const {id}=await context.params;
-    if(process.env.VERCEL){
+    let local=false;
+    if(!process.env.VERCEL){try{await requireVideoOwner(id,user.id);local=true;}catch(error){if(!(error instanceof RouteError) || error.status!==404)throw error;}}
+    if(!local){
       const client=videoClient(token);const job=await hostedVideoStatus(client,user.id,id);
       if(job.status!=="ready")throw new RouteError(409,"video_pending","The video is still rendering.");
       const download=new URL(request.url).searchParams.has("download");
@@ -18,7 +20,6 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
       if(signed.error)throw new Error(signed.error.message);
       return new Response(null,{status:307,headers:{Location:signed.data.signedUrl,"Cache-Control":"private, no-store"}});
     }
-    await requireVideoOwner(id,user.id);
     if((await videoStatus(id)).status!=="ready") throw new RouteError(409,"video_pending","The video is still rendering.");
     const bytes=await readFile(join(videoDirectory(id),"explanation.mp4"));
     const range=request.headers.get("range");

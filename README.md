@@ -2,62 +2,150 @@
 
 <p align="center"><img src="public/brand/chalk-logo.png" alt="Chalk logo" width="120" /></p>
 
-An interactive science and mathematics notebook by Anshul Raman and Jayrajsinh Gohil. Give it a numerical or symbolic problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+**An interactive notebook for understanding physics, chemistry, and mathematics.**
 
-The interface follows the supplied notebook design: white surfaces, navy sans-serif text, blue controls, compact navigation, and a light 3D viewport. Exact-value inputs complement the sliders; playback stays below the scene.
+Submit a question as text or a photo. Chalk keeps the original problem alongside a worked solution, then builds an interactive visual explanation. Explore the variables, follow the derivation, and turn the explanation into a narrated video within the same notebook.
 
-## Features
+**[Open Chalk](https://chalk.anshulraman.com)**
 
-- Ten offline examples: projectile motion, a rough incline, an Atwood pulley, a circular orbit, elastic collision, ideal pipe flow, a travelling wave, damped springs, a source-free RLC circuit, and falling through a fluid with linear drag.
-- Separate explanation-video and interactive-simulation views. Generate a real MP4 with Manim: spoken explanation, typeset equations, a diagram following the checked motion, and final answers. Download the completed film.
-- 3D playback, trails, force and velocity arrows, connectors, camera shots, timeline scrubbing, and speed controls.
-- Adjustable parameters and recalculated answers without a model call.
-- Predict before Play with hidden answers and numerical feedback.
-- Clickable equations that highlight the corresponding step's objects and vectors.
-- Visible problem statements, model assumptions, warnings, and worked solutions.
-- Conceptual and symbolic questions keep their written explanations and can generate schematic visual explanations with clearly labelled demonstration parameters. These do not pretend illustrative values were supplied in the problem. Problems genuinely missing required data keep the model's request for that information instead of a generic numeric-answer error.
-- Text, photo upload, manual webcam capture, and natural-language scene edits.
-- Each submitted question opens its own notebook page immediately, with a generation status and streamed answers. Pages and manually created notebooks are saved to your Supabase account and can be reopened from another signed-in browser. The Notebooks rail opens the notebook and question tree. New accounts create their own first notebook.
-- Optional browser narration, muted initially. Availability depends on the browser.
-- Share links that restore a validated scene and its parameter values.
+## Explore a question
+
+1. Create a notebook and add a **New question**. Type the problem, upload a photo, or capture one with your camera.
+2. Read the saved problem and written solution in **Problem**, with equations displayed in mathematical notation.
+3. Open **Derivation** to follow the explanation and highlight relevant parts of the simulation.
+4. Use **Variables** to adjust sliders or enter exact values. The scene and calculated answers update together.
+5. Play, pause, scrub, or change the playback speed. Orbit and zoom the scene to inspect it.
+6. Select **Explanation** to generate or watch a narrated MP4. Saved video versions remain available for playback and download.
+
+## What it supports
+
+| Area | Experience |
+| --- | --- |
+| Physics | Animated apparatus, trajectories, force and velocity vectors, and calculated quantities. |
+| Chemistry | Schematic models, relationships, and reaction explanations with explicit assumptions. |
+| Mathematics | Graphs, symbolic reasoning, and illustrative visualizations accompanying a written solution. |
+| Conceptual questions | Written reasoning and visual demonstrations, even when the answer is not a single number. |
+
+Illustrative parameters are distinguished from values supplied in the question. A visual example helps explain a mathematical proof; it does not replace the proof. If a question lacks information needed for a unique answer, the written response explains what is missing.
+
+Ten built-in examples cover projectile motion, a rough incline, an Atwood pulley, a circular orbit, elastic collision, ideal pipe flow, a travelling wave, damped springs, a source-free RLC circuit, and linear fluid drag. These examples can be explored without a model request.
+
+## Notebooks and saved work
+
+- Sign in to reopen notebooks and questions on another browser or device.
+- Create and rename notebooks and choose questions from the notebook tree. The scene picker follows the active notebook.
+- Rename individual questions or remove them from the active list. Removed questions can be restored with their saved content.
+- Keep submitted text or photos, extracted problem text, worked solutions, parameter values, simulation versions, and video references together.
+- Regenerating a simulation preserves earlier versions so they can be selected again.
+- Share a link to the selected scene and its parameter values.
+
+Supabase stores account data with ownership policies. Explanation MP4s live in a private Supabase Storage bucket and are served through authenticated routes with temporary playback links.
+
+Existing videos rendered on the local server are uploaded to cloud storage under their original IDs when the signed-in local app opens. Completed local renders upload automatically, with retries on later local visits. Uploading an existing MP4 does not re-render it or remove the local file. Both the local and deployed app can play cloud videos.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Text or photo] --> B[Worked solution]
+    B --> C[Validated scene description]
+    C --> D[Interactive visualization]
+    C --> E[Narrated MP4]
+    B --> F[Saved question]
+    D --> F
+    E --> G[Private cloud video storage]
+    F --> H[Cloud notebooks]
+```
+
+The solution and visualization are separate stages. Model-generated scenes are structured data containing objects, equations, and timeline steps, rather than executable rendering code. Chalk parses expressions, evaluates answers, and checks the scene before displaying it.
+
+On Vercel, generation runs through durable Workflow jobs. Video rendering runs in a Vercel Sandbox with Python, Manim, FFmpeg, TeX, and narration tools. The completed MP4 is uploaded to Supabase Storage. The browser checks the saved job status, so refreshing or signing out does not cancel a hosted rendering job.
+
+Local development can use Gemini, OpenCode, or Ollama. OpenCode and Ollama run on the local host; the deployed Vercel generation workflow uses Gemini and does not depend on a laptop's loopback server.
+
+## Technology
+
+| Layer | Tools |
+| --- | --- |
+| Application | Next.js App Router, React, TypeScript |
+| Interactive scenes | Three.js, React Three Fiber, drei |
+| Equations and calculations | KaTeX, mathjs, Zod validation |
+| Accounts and persistence | Supabase Auth, Postgres, private Storage |
+| Hosted execution | Vercel, Workflow, Sandbox |
+| Explanation videos | Python, Manim, FFmpeg, TeX, Windows speech voices or Linux eSpeak |
+| Model backends | Gemini for hosted generation; OpenCode or Ollama for local development |
 
 ## Run locally
 
-Install dependencies with `npm install` and copy `.env.example` to `.env.local`. Sign in to your existing OpenCode Go account in OpenCode. The startup uses DeepSeek V4.1 Flash for text and photos; Gemini is not required. Keep authentication in OpenCode's local account store, never in browser code. Set `CHALK_HOST=0.0.0.0` to serve the website over your Wi-Fi. The model bridge stays on loopback.
+Use Node.js 24 and npm. Install dependencies and copy the example configuration:
 
 ```sh
-npm run dev:opencode
+npm install
+cp .env.example .env.local
+```
+
+On PowerShell, `Copy-Item .env.example .env.local` also works.
+
+Configure the same Supabase project used by the deployed app to share account data and cloud videos:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+```
+
+For the hosted model backend locally:
+
+```dotenv
+CHALK_SOLVER=gemini
+GEMINI_API_KEY=YOUR_SERVER_SIDE_KEY
+```
+
+Then run `npm run dev` and open `http://127.0.0.1:3000`. Use `npm run dev:lan` to make the app accessible to devices on the same network.
+
+### Other local model backends
+
+**OpenCode:** sign in through OpenCode and configure the provider and model variables in `.env.local`. `npm run dev:opencode` starts or reuses the local bridge on port 4098 and starts Chalk. Keep the bridge bound to loopback.
+
+**Ollama:** install and download the configured model, then use `npm run dev:local`. Model and server settings are listed in `.env.example`. For a model hosted on a second computer, see [the local model setup](MAC_MODEL_SETUP.md).
+
+### Optional local video rendering
+
+Install Python, FFmpeg, a TeX distribution with `latex` and `dvisvgm`, and the native dependencies required by Manim. Then run:
+
+```sh
+npm run setup:video
+```
+
+Local rendering uses `.chalk-work/video-venv` and writes jobs into `.chalk-work/videos`. Windows speech voices provide narration on Windows; Linux uses eSpeak when available. Hosted generation provides its rendering tools inside Vercel Sandbox, so users of the deployed app do not need them installed.
+
+## Deploy
+
+1. Connect the repository to a Vercel project.
+2. Apply the SQL files in `supabase/migrations` in chronological order.
+3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `CHALK_SOLVER=gemini`, and `GEMINI_API_KEY` in Vercel. Optional Gemini model overrides are listed in `.env.example`.
+4. Configure Supabase Auth's site URL and allowed redirect URLs for the deployed domain and local development URLs.
+5. Deploy. The Next.js configuration enables Workflow and includes the fixed video-rendering scripts and logo needed by Sandbox jobs.
+
+Vercel Sandbox access uses the deployment's Vercel identity. Supabase requests use the authenticated user's session and ownership policies; the video pipeline does not require a Supabase service-role key.
+
+With the Vercel CLI installed, a linked project can be deployed with:
+
+```sh
+vercel deploy --prod
+```
+
+Provider credentials belong only in server-side environment variables. Do not put them in `NEXT_PUBLIC_` variables or commit `.env.local`.
+
+## Checks and model boundaries
+
+```sh
 npm test
 npm run typecheck
 npm run build
 ```
 
-## Solver and scene checks
+Tests cover expression safety, scene references, numerical agreement, parameter ranges, physics examples, account isolation, cloud persistence, saved versions, and video uploads.
 
-`POST /api/solve` accepts problem text or a resized image. The first OpenCode model call returns a worked solution and constant arithmetic expressions. Chalk evaluates these expressions on the server to obtain numerical answers. The second call returns a structured scene script with math expressions instead of executable rendering code. `POST /api/edit` re-solves the problem after the requested change using the same pipeline. Each runtime session denies tools and is cleaned up when the request ends; problem text cannot invoke coding tools.
+The expression validator rejects assignments, arbitrary property access, unsupported functions, and nonfinite results. Scene checks sample the timeline and parameter ranges, check answer agreement, and detect ineffective controls. The renderer uses fixed Python templates with validated scene data.
 
-Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. New OpenCode/Ollama scenes are also checked for ineffective sliders: each adjustable variable must change evaluated answers or sampled geometry. An invalid scene receives one repair attempt. The OpenCode path withholds a scene that remains invalid or disagrees with the calculated answers.
-
-The browser requests an NDJSON stream and displays calculated answers before scene generation completes. JSON clients retain the original complete-response format. A live Venturi-manometer photo test returned checked answers in 10.4 seconds and a validated scene in 158.3 seconds, including repair. These are measured timings, not a latency guarantee. Ollama on a second computer remains available through the setup in `MAC_MODEL_SETUP.md`.
-
-These checks catch structural and numerical errors. They do not prove that an inferred physical model fits a problem. The examples use stated idealizations; the pipe example uses continuity and Bernoulli rather than a turbulence solver. New problems may produce an explanation or diagram that is less complete than a cached example.
-
-## Rendering
-
-React Three Fiber and drei render the scene. A compiled expression sampler drives objects, vectors, connectors, and answers. Paths are capped at 160 samples, and vector readouts refresh on a throttle. KaTeX displays the authored equations. If WebGL is unavailable, the interface keeps calculated answers and explanatory controls available.
-
-## Explanation videos
-
-Run `npm run setup:video` once to install the isolated Python/Manim runtime, then start the local app. Select **Watch explanation**, then **Generate explanation video**. Python, FFmpeg, and a TeX installation are needed for rendering and typeset equations. On Windows, installed System.Speech voices provide narration; other systems currently render written explanations without voice. The renderer uses a fixed Python template and validated sampled scene data, never generated Python code. Rendering runs in a background job and the MP4 appears when complete. The video job reference is saved with its question, so switching views or refreshing can resume the completed or in-progress film. MP4 files remain on the local host: another browser can play them through that same server, but this is not cloud media storage. Video generation currently runs locally, not on Vercel.
-
-The advanced examples implement specific analytic differential-equation models: underdamped viscous spring motion, underdamped source-free series RLC response, and linear fluid drag. They state initial conditions, idealizations and sign conventions. Circuit motion is a charge indicator rather than an electron trajectory. These are not universal solvers for turbulence, nonlinear systems, or arbitrary advanced physics.
-
-## Validation
-
-Tests cover unsafe expressions, scene references, numerical checks, slider ranges, projectile landing, incline motion, pulley motion, orbital relationships, collision conservation, ideal flow, and waves. OpenCode integration tests additionally check constant answer calculation, denied tools, provider failures, and request cleanup. Run the commands above to validate your checkout.
-
-## Deployment
-
-The OpenCode bridge connects only to a server on the same computer. Run Chalk at `http://127.0.0.1:3000/` and keep the local OpenCode server running. The startup command starts or reuses the server on port 4098. Change the model IDs through the `OPENCODE_MODEL` and `OPENCODE_VISION_MODEL` environment variables. Usage follows your existing OpenCode account's limits.
-
-For an optional hosted Google backend, set `CHALK_SOLVER=gemini` and a server-side `GEMINI_API_KEY`. That path retains Google's code-execution solver. A Vercel deployment cannot reach your laptop's loopback OpenCode server. Install the Vercel CLI with `npm i -g vercel` for deployment, environment management, and logs. Never put provider keys in a `NEXT_PUBLIC_` variable.
+These checks help catch structural and numerical errors; they do not prove that a generated scientific model is correct. Read each explanation with its assumptions. The built-in examples use specific idealized models, and generated visualizations may be schematic. Rendering and model latency depend on the problem and available resources.

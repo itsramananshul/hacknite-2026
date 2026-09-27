@@ -123,6 +123,15 @@ export default function Page() {
     const {data}=client.auth.onAuthStateChange(event=>{if(event==="TOKEN_REFRESHED")setTimeout(()=>void sync(),0);});
     return()=>{alive=false;data.subscription.unsubscribe();};
   },[accountId]);
+  useEffect(()=>{
+    if(!accountId || !sessionReady)return;
+    // The local server uploads existing owned MP4s; production is a no-op.
+    let busy=false;
+    const sync=async()=>{if(busy)return;busy=true;try{await authFetch("/api/video/sync",{method:"POST"});}catch{}finally{busy=false;}};
+    void sync();
+    const timer=setInterval(()=>void sync(),60_000);
+    return()=>clearInterval(timer);
+  },[accountId,sessionReady]);
   const [library,setLibrary] = useState<Library>(EMPTY_LIBRARY);
   const [notebookId,setNotebookId] = useState("physics");
   const notebookRef = useRef("physics");
