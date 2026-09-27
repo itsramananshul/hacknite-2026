@@ -116,7 +116,54 @@ function IconVariables() {
 
 export default function Page() {
   const [presetKey, setPresetKey] = useState<PresetKey>("projectile");
-  const [scene, setScene] = useState<SceneScript>(() => presets.projectile);
+  const [scene, setScene] = useState<SceneScript | null>(() => presets.projectile);
+  const [solution, setSolution] = useState("");
+  const [questionPage,setQuestionPage] = useState<{
+    id:string; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
+    answers:Omit<SolveResult,"scene">|null; error:string|null;
+  }|null>(null);
+  const activeQuestion = useRef<string|null>(null);
+  useEffect(()=>{
+    const restore=()=>{
+      const id=new URL(window.location.href).searchParams.get("page");
+      if(!id) {
+        if(activeQuestion.current) {
+          activeQuestion.current=null;
+          setQuestionPage(null);
+          setScene(presets.projectile);
+          setSolution("");
+          setPlaying(false);
+        }
+        return;
+      }
+      if(activeQuestion.current===id) return;
+      try {
+        const raw=sessionStorage.getItem(`chalk-page:${id}`);
+        if(!raw) return;
+        const saved=JSON.parse(raw);
+        if(saved.questionPage?.id!==id || typeof saved.questionPage.problemText!=="string") return;
+        const restoredScene=saved.scene ? validateSceneScript(saved.scene).scene : null;
+        activeQuestion.current=id;
+        setQuestionPage({...saved.questionPage,...(!restoredScene && ["solving","building"].includes(saved.questionPage.status) ? {
+          status:"error",error:"This page was reopened before its simulation finished. Submit the problem again to generate it."
+        } : {})});
+        setScene(restoredScene);
+        setSolution(typeof saved.solution==="string" ? saved.solution : "");
+        setPlaying(false);
+        setCompare(false);
+        setPredict(false);
+        setView("simulation");
+      } catch { /* A missing or invalid saved page never replaces the current scene. */ }
+    };
+    restore();
+    window.addEventListener("popstate",restore);
+    return()=>window.removeEventListener("popstate",restore);
+  },[]);
+  useEffect(()=>{
+    if(!questionPage) return;
+    try {sessionStorage.setItem(`chalk-page:${questionPage.id}`,JSON.stringify({questionPage,scene,solution}));}
+    catch { /* Storage limits do not prevent a new problem from being solved. */ }
+  },[questionPage,scene,solution]);
   const [values, setValues] = useState<Record<string, number>>(() => initialValues(presets.projectile));
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -133,7 +180,6 @@ export default function Page() {
   const [predict, setPredict] = useState(false);
   const [guess, setGuess] = useState("");
   const [revealed, setRevealed] = useState(false);
-  const [solution, setSolution] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editBusy, setEditBusy] = useState(false);
@@ -160,6 +206,8 @@ export default function Page() {
       setCompare(false);
       setPredict(false);
       setScene(shared);
+      activeQuestion.current=null;
+      setQuestionPage(null);
       setNotice("Shared scene loaded. Press play to explore it.");
     } catch {
       setNotice("This shared scene could not be loaded. The presets are available.");
@@ -169,7 +217,7 @@ export default function Page() {
     window.addEventListener("hashchange", loadSharedScene);
     return () => window.removeEventListener("hashchange", loadSharedScene);
   }, []);
-  const prepared = useMemo(() => prepare(scene), [scene]);
+  const prepared = useMemo<Prepared|Broken>(() => scene ? prepare(scene) : {scene:null,compiled:null,warnings:[],error:""}, [scene]);
   const live = prepared.scene;
   const compiled = prepared.compiled;
   const steps = useMemo(() => live?.steps ?? [], [live]);
@@ -371,6 +419,12 @@ export default function Page() {
   );
 
   const selectPreset = useCallback((key: PresetKey) => {
+    activeQuestion.current=null;
+    setQuestionPage(null);
+    const url=new URL(window.location.href);
+    url.searchParams.delete("page");
+    url.hash="";
+    window.history.replaceState(null,"",url);
     setPresetKey(key);
     setScene(presets[key]);
     setNotice(null);
@@ -388,7 +442,53 @@ export default function Page() {
     requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
   }, []);
 
-  const handleSolved = useCallback((result: SolveResult) => {
+  const handleStarted = useCallback((problemText:string) => {
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
+    activeQuestion.current=id;
+    setQuestionPage({id,problemText,status:"solving",answers:null,error:null});
+    setScene(null);
+    setSolution("");
+    setPlaying(false);
+    cancelSpeech();
+    setTime(0);
+    sharedClock.current=0;
+    setCompare(false);
+    setPredict(false);
+    setSelected(null);
+    setValues({});
+    setEditText("");
+    setEditError(null);
+    setNotice(null);
+    setShareUrl("");
+    setShareStatus("");
+    setView("simulation");
+    const url=new URL(window.location.href);
+    url.searchParams.set("page",id);
+    url.hash="nb-problem";
+    window.history.pushState(null,"",url);
+    requestAnimationFrame(()=>{
+      const heading=document.getElementById("question-page-title");
+      heading?.focus({preventScroll:true});
+      document.querySelector(".nb-notebook")?.scrollTo({top:0});
+      document.querySelector(".nb-workspace")?.scrollTo({top:0});
+    });
+    return id;
+  },[]);
+
+  const handleAnswers = useCallback((result:Omit<SolveResult,"scene">,id:string)=>{
+    if(activeQuestion.current!==id) return;
+    setSolution(result.solutionText);
+    setQuestionPage(previous=>previous?.id===id ? {...previous,status:"building",answers:result} : previous);
+  },[]);
+
+  const handleFailed = useCallback((error:string,id:string)=>{
+    if(activeQuestion.current!==id) return;
+    setQuestionPage(previous=>previous?.id===id ? {...previous,status:"error",error} : previous);
+  },[]);
+
+  const handleSolved = useCallback((result: SolveResult,id:string) => {
+    if(activeQuestion.current!==id) return;
+    setQuestionPage(previous=>previous?.id===id ? {...previous,status:result.scene?"ready":"answer-only",answers:result} : previous);
     setSolution(result.solutionText);
     if (result.scene) {
       setScene(result.scene);
@@ -400,13 +500,13 @@ export default function Page() {
       return;
     }
     setNotice(
-      "This answer has no scene Chalk can draw yet, so the board is unchanged. The solution is in the notebook and every preset still loads with no key of any kind.",
+      "Your answer is in this notebook. A simulation could not be generated for this problem.",
     );
   }, []);
 
   const runEdit = useCallback(async () => {
     const instruction = editText.trim();
-    if (instruction.length === 0 || editBusy) return;
+    if (!scene || instruction.length === 0 || editBusy) return;
     setEditBusy(true);
     setEditError(null);
     try {
@@ -444,6 +544,7 @@ export default function Page() {
   }, [editText, editBusy, scene]);
 
   const blurb =
+    (questionPage && !live ? questionPage.problemText || "A problem from your photo." : "") ||
     firstSentence(live?.problemText?.trim() || "") ||
     presetList.find((item) => item.key === presetKey)?.blurb ||
     "Explore a projectile launched from a cliff.";
@@ -509,13 +610,13 @@ export default function Page() {
         <span className="nb-header-divider" aria-hidden="true" />
         <div className="nb-crumbs">
           <span className="nb-crumb">Physics notebook</span>
-          <span className="nb-topic">{live?.title ?? "Physics notebook"}</span>
+          <span className="nb-topic">{live?.title ?? (questionPage ? "New physics problem" : "Physics notebook")}</span>
         </div>
         <div className="nb-header-actions">
           <button type="button" className="nb-btn nb-btn-ghost" onClick={openProblem}>
             New page
           </button>
-          <button type="button" className="nb-btn nb-btn-primary" onClick={share}>
+          <button type="button" className="nb-btn nb-btn-primary" onClick={share} disabled={!live}>
             Share
           </button>
           <span className="share-status" role="status">{shareStatus}</span>
@@ -546,8 +647,8 @@ export default function Page() {
         <aside className="nb-notebook" aria-label="Notebook">
           <section className="nb-section" id="nb-problem">
             <p className="nb-eyebrow">Experiment</p>
-            <h1 className="nb-title">{live?.title ?? "Physics problem"}</h1>
-            {live?.problemText ? <p className="nb-problem-text">{blurb}</p> : null}
+            <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{live?.title ?? "New physics problem"}</h1>
+            {live?.problemText || questionPage ? <p className="nb-problem-text">{blurb}</p> : null}
             <div className="nb-subhead">
               <h3 className="nb-h3">Given</h3>
               <button type="button" className="nb-link" onClick={openProblem}>
@@ -567,11 +668,11 @@ export default function Page() {
                 ))}
               </dl>
             ) : (
-              <p className="nb-note">This scene fixes every quantity.</p>
+              <p className="nb-note">{questionPage ? "Reading the quantities in your problem." : "This scene fixes every quantity."}</p>
             )}
           </section>
 
-          <section className="nb-section" id="nb-derivation">
+          {live ? <section className="nb-section" id="nb-derivation">
             <div className="nb-subhead">
               <h3 className="nb-h3">Derivation</h3>
               <span className="nb-count">{steps.length} {steps.length === 1 ? "step" : "steps"}</span>
@@ -584,7 +685,15 @@ export default function Page() {
               onSeek={seek}
               onHighlight={highlightStep}
             />
-          </section>
+          </section> : null}
+
+          {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution">
+            <h3 className="nb-h3">{questionPage.answers ? "Calculated answers" : "Solving your problem"}</h3>
+            {questionPage.answers ? <>
+              <dl className="nb-results">{questionPage.answers.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
+              <p className="nb-solution">{questionPage.answers.solutionText}</p>
+            </> : <p className="nb-note" role="status">Calculating the answer for this new page…</p>}
+          </section> : null}
 
           {live && compiled ? (
             <section className="nb-section" aria-label="Calculated answers">
@@ -754,7 +863,7 @@ export default function Page() {
               </button>
             </div>
             <div hidden={!problemOpen}>
-              <InputPanel onSolved={handleSolved} />
+              <InputPanel onStarted={handleStarted} onAnswers={handleAnswers} onFailed={handleFailed} onSolved={handleSolved} />
             </div>
           </section>
 
@@ -800,6 +909,7 @@ export default function Page() {
                 type="button"
                 className="nb-seg"
                 aria-pressed={view === "video"}
+                disabled={!live}
                 onClick={() => {
                   setView("video");
                   setPlaying(false);
@@ -814,19 +924,20 @@ export default function Page() {
             <select
               id="scene-picker"
               className="nb-select"
-              value={presetKey}
+              value={!live || scene!==presets[presetKey] ? "" : presetKey}
               onChange={(event) => selectPreset(event.target.value as PresetKey)}
             >
+              {!live || scene!==presets[presetKey] ? <option value="" disabled>{live?.title ?? "Generating your simulation…"}</option> : null}
               {presetList.map((item) => (
                 <option key={item.key} value={item.key}>
                   {item.name}
                 </option>
               ))}
             </select>
-            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={compare} onClick={toggleCompare}>
+            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={compare} onClick={toggleCompare} disabled={!live}>
               {compare ? "Close comparison" : "Compare a change"}
             </button>
-            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={predict} onClick={togglePredict}>
+            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={predict} onClick={togglePredict} disabled={!live}>
               {predict ? "Hide prediction" : "Predict"}
             </button>
             {selected !== null ? (
@@ -839,7 +950,12 @@ export default function Page() {
           <div className="nb-viewport">
             <div className="nb-sim" hidden={view !== "simulation"}>
               <span id="nb-simulation" className="nb-anchor" aria-hidden="true" />
-              {prepared.error || !live || !compiled ? (
+              {!live && questionPage ? <div className="nb-stage nb-stage-loading" id="simulation" aria-busy={questionPage.status==="solving" || questionPage.status==="building"}>
+                <div className="nb-fallback" role="status">
+                  <h2>{questionPage.status==="error" ? "Simulation could not finish" : questionPage.status==="answer-only" ? "Your written solution is ready" : "Generating your simulation"}</h2>
+                  <p>{questionPage.error ?? (questionPage.answers ? "Your answers are ready in the notebook. Building the 3D explanation for this problem…" : "Reading this problem and calculating its answers…")}</p>
+                </div>
+              </div> : prepared.error || !live || !compiled ? (
                 <div className="nb-stage nb-stage-broken">
                   <div className="nb-fallback" role="alert">
                     <h2>This scene could not be prepared</h2>
@@ -915,7 +1031,7 @@ export default function Page() {
                 </div>
               )}
 
-              <Timeline
+              {live ? <><Timeline
                 duration={duration}
                 time={time}
                 playing={playing}
@@ -974,7 +1090,7 @@ export default function Page() {
                 >
                   {editBusy ? "Applying the change" : "Apply the change"}
                 </button>
-              </section>
+              </section></> : null}
             </div>
 
             <div className="nb-video" hidden={view !== "video"}>

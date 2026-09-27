@@ -15,6 +15,7 @@ The interface follows the supplied notebook design: warm white pages, serif deri
 - Clickable equations that highlight the corresponding step's objects and vectors.
 - Visible problem statements, model assumptions, warnings, and worked solutions.
 - Text, photo upload, manual webcam capture, and natural-language scene edits.
+- Each submitted question opens its own notebook page immediately, with a generation status and streamed answers. Completed pages can be reopened within the same browser session.
 - Optional browser narration, muted initially. Availability depends on the browser.
 - Share links that restore a validated scene and its parameter values.
 

@@ -4,8 +4,8 @@
 // or holds a book page up to the camera, and this panel hands the text and one
 // resized image to /api/solve. The server does the reading, the solving and the
 // scene building, and the panel shows what came back. Nothing here invents a
-// result: there is no progress bar, because there is no stream to watch, and an
-// error leaves the typed problem and the photo exactly where they were.
+// result. Calculated answers stream to the current notebook page, and an error
+// leaves the typed problem and the photo exactly where they were.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SolveResult } from "@/lib/gemini";
@@ -14,7 +14,10 @@ import {readSolveStream} from "@/lib/solve-stream";
 export type { SolveResult };
 
 export interface InputPanelProps {
-  onSolved: (result: SolveResult) => void;
+  onStarted: (problemText: string) => string;
+  onAnswers: (result: Omit<SolveResult,"scene">, pageId: string) => void;
+  onFailed: (message: string, pageId: string) => void;
+  onSolved: (result: SolveResult, pageId: string) => void;
 }
 
 const MAX_TEXT_CHARS = 6000;
@@ -91,14 +94,13 @@ async function readFailure(response: Response): Promise<string> {
   return `The service answered ${response.status} without a reason. Try again.`;
 }
 
-export default function InputPanel({ onSolved }: InputPanelProps) {
+export default function InputPanel({ onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
   const [problemText, setProblemText] = useState("");
   const [image, setImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [checkedSolution,setCheckedSolution]=useState<Omit<SolveResult,"scene">|null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -193,8 +195,8 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
     inFlight.current = true;
     setBusy(true);
     setError(null);
-    setCheckedSolution(null);
     setStatus(WORKING_STATUS);
+    const pageId = onStarted(text);
     const controller = new AbortController();
     let ranOut = false;
     const timer = setTimeout(() => {
@@ -209,20 +211,16 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
         signal: controller.signal,
       });
       if (!response.ok) {
-        setStatus(null);
-        setError(await readFailure(response));
-        return;
+        throw new Error(await readFailure(response));
       }
       const payload: unknown = response.headers.get("content-type")?.includes("application/x-ndjson")
         ? await readSolveStream(response,result=>{
-          setCheckedSolution(result);
+          onAnswers(result,pageId);
           setStatus("Your answer is calculated. Building the 3D explanation…");
         })
         : await response.json();
       if (!payload || typeof payload !== "object") {
-        setStatus(null);
-        setError("The service answered without a solution.");
-        return;
+        throw new Error("The service answered without a solution.");
       }
       const result = payload as {
         scene?: SolveResult["scene"];
@@ -231,9 +229,7 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
         warnings?: unknown;
       };
       if (typeof result.solutionText !== "string") {
-        setStatus(null);
-        setError("The service answered without a solution.");
-        return;
+        throw new Error("The service answered without a solution.");
       }
       const answers = Array.isArray(result.answers) ? (result.answers as SolveResult["answers"]) : [];
       const warnings = Array.isArray(result.warnings) ? (result.warnings as string[]) : [];
@@ -247,20 +243,21 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
         solutionText: result.solutionText,
         answers,
         warnings,
-      });
+      },pageId);
     } catch (failure) {
       setStatus(null);
-      setError(
+      const message =
         ranOut
           ? `The solver did not answer within ${Math.round(REQUEST_TIMEOUT_MS / 1000)} seconds, so the request was stopped. Your problem is still here, press Solve again.`
-          : failure instanceof Error ? failure.message : "The request to the server did not finish. Your problem is still here, press Solve again.",
-      );
+          : failure instanceof Error ? failure.message : "The request to the server did not finish. Your problem is still here, press Solve again.";
+      setError(message);
+      onFailed(message,pageId);
     } finally {
       clearTimeout(timer);
       inFlight.current = false;
       setBusy(false);
     }
-  }, [image, onSolved, problemText]);
+  }, [image, onStarted, onAnswers, onFailed, onSolved, problemText]);
 
   const canSolve = (problemText.trim().length > 0 || image !== null) && !busy;
 
@@ -365,12 +362,6 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
           {status}
         </p>
       ) : null}
-
-      {checkedSolution ? <section aria-label="Calculated solution" className="nb-section">
-        <h3 className="nb-h3">Calculated answers</h3>
-        <dl className="nb-results">{checkedSolution.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
-        <p className="nb-note" style={{whiteSpace:"pre-wrap"}}>{checkedSolution.solutionText}</p>
-      </section> : null}
 
       {error ? (
         <p className="notice notice-warn" role="status" style={{ marginTop: 10 }}>
