@@ -1,0 +1,8 @@
+export interface SavedVideo {id:string;fingerprint:string}
+export function readVideoReference(value:unknown):SavedVideo|undefined {
+  if(!value || typeof value!=="object")return;
+  const candidate=value as Partial<SavedVideo>;
+  if(typeof candidate.id!=="string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(candidate.id))return;
+  if(typeof candidate.fingerprint!=="string" || candidate.fingerprint.length>200000)return;
+  return {id:candidate.id,fingerprint:candidate.fingerprint};
+}

@@ -1,6 +1,6 @@
 # Chalk
 
-An interactive physics workspace by Anshul Raman. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+An interactive science and mathematics notebook by Anshul Raman. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
 
 The interface follows the supplied notebook design: warm white pages, serif derivations, blue controls, and a light 3D viewport.
 
@@ -10,12 +10,11 @@ The interface follows the supplied notebook design: warm white pages, serif deri
 - Separate explanation-video and interactive-simulation views. Generate a real MP4 with Manim: spoken explanation, typeset equations, a diagram following the checked motion, and final answers. Download the completed film.
 - 3D playback, trails, force and velocity arrows, connectors, camera shots, timeline scrubbing, and speed controls.
 - Adjustable parameters and recalculated answers without a model call.
-- Original and changed scenes on a shared timeline.
 - Predict before Play with hidden answers and numerical feedback.
 - Clickable equations that highlight the corresponding step's objects and vectors.
 - Visible problem statements, model assumptions, warnings, and worked solutions.
 - Text, photo upload, manual webcam capture, and natural-language scene edits.
-- Each submitted question opens its own notebook page immediately, with a generation status and streamed answers. Completed pages can be reopened within the same browser session.
+- Each submitted question opens its own notebook page immediately, with a generation status and streamed answers. Pages and manually created notebooks are saved to your Supabase account and can be reopened from another signed-in browser. The Notebooks rail opens the notebook and question tree. New accounts create their own first notebook.
 - Optional browser narration, muted initially. Availability depends on the browser.
 - Share links that restore a validated scene and its parameter values.
 
@@ -34,7 +33,7 @@ npm run build
 
 `POST /api/solve` accepts problem text or a resized image. The first OpenCode model call returns a worked solution and constant arithmetic expressions. Chalk evaluates these expressions on the server to obtain numerical answers. The second call returns a structured scene script with math expressions instead of executable rendering code. `POST /api/edit` re-solves the problem after the requested change using the same pipeline. Each runtime session denies tools and is cleaned up when the request ends; problem text cannot invoke coding tools.
 
-Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. An invalid scene receives one repair attempt. The OpenCode path withholds a scene that remains invalid or disagrees with the calculated answers.
+Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. New OpenCode/Ollama scenes are also checked for ineffective sliders: each adjustable variable must change evaluated answers or sampled geometry. An invalid scene receives one repair attempt. The OpenCode path withholds a scene that remains invalid or disagrees with the calculated answers.
 
 The browser requests an NDJSON stream and displays calculated answers before scene generation completes. JSON clients retain the original complete-response format. A live Venturi-manometer photo test returned checked answers in 10.4 seconds and a validated scene in 158.3 seconds, including repair. These are measured timings, not a latency guarantee. Ollama on a second computer remains available through the setup in `MAC_MODEL_SETUP.md`.
 
@@ -42,11 +41,11 @@ These checks catch structural and numerical errors. They do not prove that an in
 
 ## Rendering
 
-React Three Fiber and drei render the scene. A compiled expression sampler drives objects, vectors, connectors, and answers. Comparison uses one shared clock. Paths are capped at 160 samples, and vector readouts refresh on a throttle. KaTeX displays the authored equations. If WebGL is unavailable, the interface keeps calculated answers and explanatory controls available.
+React Three Fiber and drei render the scene. A compiled expression sampler drives objects, vectors, connectors, and answers. Paths are capped at 160 samples, and vector readouts refresh on a throttle. KaTeX displays the authored equations. If WebGL is unavailable, the interface keeps calculated answers and explanatory controls available.
 
 ## Explanation videos
 
-Run `npm run setup:video` once to install the isolated Python/Manim runtime, then start the local app. Select **Watch explanation**, then **Generate explanation video**. Python, FFmpeg, and a TeX installation are needed for rendering and typeset equations. On Windows, installed System.Speech voices provide narration; other systems currently render written explanations without voice. The renderer uses a fixed Python template and validated sampled scene data, never generated Python code. Rendering runs in a background job and the MP4 appears when complete. Video generation currently runs locally, not on Vercel.
+Run `npm run setup:video` once to install the isolated Python/Manim runtime, then start the local app. Select **Watch explanation**, then **Generate explanation video**. Python, FFmpeg, and a TeX installation are needed for rendering and typeset equations. On Windows, installed System.Speech voices provide narration; other systems currently render written explanations without voice. The renderer uses a fixed Python template and validated sampled scene data, never generated Python code. Rendering runs in a background job and the MP4 appears when complete. The video job reference is saved with its question, so switching views or refreshing can resume the completed or in-progress film. MP4 files remain on the local host: another browser can play them through that same server, but this is not cloud media storage. Video generation currently runs locally, not on Vercel.
 
 The advanced examples implement specific analytic differential-equation models: underdamped viscous spring motion, underdamped source-free series RLC response, and linear fluid drag. They state initial conditions, idealizations and sign conventions. Circuit motion is a charge indicator rather than an electron trajectory. These are not universal solvers for turbulence, nonlinear systems, or arbitrary advanced physics.
 

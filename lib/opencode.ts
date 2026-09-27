@@ -14,6 +14,7 @@
 // subagent or a network fetch. One session per request, deleted when the request
 // ends, and aborted before deletion if a call fails.
 import { z } from "zod";
+import {sceneInteractivityIssues} from "./scene-interactivity";
 import { compileExpression } from "./expressions";
 import { SCENE_LIMITS, sceneScriptSchema, type SceneScript } from "./schema";
 import { validateSceneScript, type ExpectedAnswer } from "./validate";
@@ -731,6 +732,8 @@ function scenePrompt(request: SceneRequest): string {
     answerBlock(request.answers, request.expressions),
     "",
     "Build the Scene Script for exactly this solution.",
+    "Use named variables for the independent given quantities (amounts, concentrations, lengths, voltages or function coefficients). Make meaningful independent quantities adjustable with physically valid slider ranges, and substitute those variable names into every dependent answer and visual expression. Numeric expressions listed above verify only the initial result; do not copy their literal inputs into the interactive scene. Constants such as molar mass may remain fixed.",
+    "Every slider must visibly change the relevant experiment and recalculate dependent answers. A concentration/amount may change a schematic fill level, particle scale, progress or equilibrium balance; never show a slider that changes nothing, and never use variable*0 to pretend it is connected. Keep all min/max combinations inside the stated model's domain. For a buffer, limit added strong acid to less than the available conjugate base throughout the ranges.",
   );
   return parts.join("\n");
 }
@@ -808,6 +811,8 @@ function checkScene(reply: SceneReply, expected: ExpectedAnswer[]): CheckedScene
         !checked.scene.objects.some(object => Object.values(object.position).some(expression => /\bt\b/.test(expression)))) {
       return {ok:false, problems:"The scene requests motion trails but every object's position is constant. Put the physical time-dependent motion in position expressions using t. Do not describe motion only in narration or equations."};
     }
+    const interactiveIssues=sceneInteractivityIssues(checked.scene);
+    if(interactiveIssues.length)return {ok:false,problems:interactiveIssues.join("\n")};
     return { ok: true, scene: checked.scene, warnings: checked.warnings };
   } catch (error) {
     return { ok: false, problems: describeAll(error) };

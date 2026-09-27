@@ -11,7 +11,7 @@ import {getSupabaseClient} from "@/lib/supabase-client";
 import {accountStorage,loadCloudLibrary,flushCloud,queueNotebooks,queuePage,readPending} from "@/lib/cloud-notebooks";
 import {EMPTY_LIBRARY, contentSignature, initialNotebook, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
-import ExplanationVideo from "@/components/ExplanationVideo";
+import ExplanationVideo, {type SavedVideo} from "@/components/ExplanationVideo";
 import StepsPanel, { activeStepIndex } from "@/components/StepsPanel";
 import Timeline from "@/components/Timeline";
 import VariableSliders from "@/components/VariableSliders";
@@ -157,7 +157,7 @@ export default function Page() {
   const [solution, setSolution] = useState("");
   const [questionPage,setQuestionPage] = useState<{
     id:string; notebookId?:string; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
-    answers:Omit<SolveResult,"scene">|null; error:string|null;
+    answers:Omit<SolveResult,"scene">|null; error:string|null; video?:SavedVideo;
   }|null>(null);
   const activeQuestion = useRef<string|null>(null);
   const generatingHere = useRef<string|null>(null);
@@ -1119,7 +1119,7 @@ export default function Page() {
             </div>
 
             <div className="nb-video" hidden={view !== "video"}>
-              {live && compiled ? <ExplanationVideo scene={live} values={values} solution={solution} /> : null}
+              {live && compiled ? <ExplanationVideo key={questionPage?.id ?? "preset"} scene={live} values={values} solution={solution} savedJob={questionPage?.video} onJob={video=>{const id=questionPage?.id;if(id)setQuestionPage(previous=>previous?.id===id ? {...previous,video} : previous);}} /> : null}
             </div>
           </div>
         </main>

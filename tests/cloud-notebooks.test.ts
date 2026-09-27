@@ -36,7 +36,7 @@ test("one device uploads a full question and a separate empty device loads its s
     select:()=>({eq:(_column:string,userId:string)=>({order:()=>({range:async()=>({error:null,data:rows[table].filter(r=>r.user_id===userId)})})})})
   })} as unknown as SupabaseClient;
   const first=accountStorage(memory(),"user-a"),second=accountStorage(memory(),"user-a");
-  const complete={...payload,scene:{title:"Free fall"},questionPage:{...payload.questionPage,answers:{answers:[{value:1.010,unit:"s"}]}}};
+  const complete={...payload,scene:{title:"Free fall"},questionPage:{...payload.questionPage,video:{id:"6db2ccc5-b4bd-4d89-b170-6e16bc39ca83",fingerprint:"scene-and-values"},answers:{answers:[{value:1.010,unit:"s"}]}}};
   queuePage(first,entry,complete,physics);
   await flushCloud(client,"user-a",first,()=>true);
   assert.equal(second.getItem(`chalk-page:${entry.id}`),null);
