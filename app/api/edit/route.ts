@@ -8,8 +8,8 @@ import { errorResponse, parseEditRequest, readRequestJson } from "@/lib/gemini";
 import { editProblem } from "@/lib/solver";
 
 export const runtime = "nodejs";
-// Three Gemini calls at 45s each is the worst case: solve, scene, repair.
-export const maxDuration = 180;
+// Each model request may run for up to 1,000 seconds.
+export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<Response> {
   try {

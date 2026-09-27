@@ -10,12 +10,13 @@ import {authFetch} from "@/lib/auth-fetch";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SolveResult } from "@/lib/gemini";
-import {readSolveStream} from "@/lib/solve-stream";
+import {generateInBackground} from "@/lib/generation-client";
 
 export type { SolveResult };
 
 export interface InputPanelProps {
   subject?: "physics"|"chemistry"|"mathematics";
+  notebookId: string;
   initialProblemText?: string;
   onStarted: (problemText: string) => string;
   onAnswers: (result: Omit<SolveResult,"scene">, pageId: string) => void;
@@ -26,7 +27,7 @@ export interface InputPanelProps {
 const MAX_TEXT_CHARS = 6000;
 const MAX_EDGE_PX = 1600;
 const MAX_IMAGE_BYTES = 1.8 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 600_000;
+
 const QUALITIES = [0.9, 0.82, 0.72, 0.6, 0.5];
 const WORKING_STATUS =
   "Reading your problem, calculating the answer, and building the 3D scene.";
@@ -97,7 +98,7 @@ async function readFailure(response: Response): Promise<string> {
   return `The service answered ${response.status} without a reason. Try again.`;
 }
 
-export default function InputPanel({ initialProblemText = "", subject = "physics", onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
+export default function InputPanel({ initialProblemText = "", subject = "physics", notebookId, onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
   const [problemText, setProblemText] = useState(initialProblemText);
   const [image, setImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -200,28 +201,11 @@ export default function InputPanel({ initialProblemText = "", subject = "physics
     setError(null);
     setStatus(WORKING_STATUS);
     const pageId = onStarted(text);
-    const controller = new AbortController();
-    let ranOut = false;
-    const timer = setTimeout(() => {
-      ranOut = true;
-      controller.abort();
-    }, REQUEST_TIMEOUT_MS);
     try {
-      const response = await authFetch("/api/solve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Accept":"application/x-ndjson" },
-        body: JSON.stringify({ problemText: text || undefined, image: image ?? undefined, subject }),
-        signal: controller.signal,
+      const payload: unknown = await generateInBackground(pageId,{problemText:text || undefined,image:image ?? undefined,subject,notebookId},result=>{
+        onAnswers(result,pageId);
+        setStatus("Your answer is calculated. Building the visualization…");
       });
-      if (!response.ok) {
-        throw new Error(await readFailure(response));
-      }
-      const payload: unknown = response.headers.get("content-type")?.includes("application/x-ndjson")
-        ? await readSolveStream(response,result=>{
-          onAnswers(result,pageId);
-          setStatus("Your answer is calculated. Building the 3D explanation…");
-        })
-        : await response.json();
       if (!payload || typeof payload !== "object") {
         throw new Error("The service answered without a solution.");
       }
@@ -230,6 +214,8 @@ export default function InputPanel({ initialProblemText = "", subject = "physics
         solutionText?: unknown;
         answers?: unknown;
         warnings?: unknown;
+        interpretedProblem?: string;
+        responseKind?: SolveResult["responseKind"];
       };
       if (typeof result.solutionText !== "string") {
         throw new Error("The service answered without a solution.");
@@ -246,21 +232,19 @@ export default function InputPanel({ initialProblemText = "", subject = "physics
         solutionText: result.solutionText,
         answers,
         warnings,
+        interpretedProblem:result.interpretedProblem,
+        responseKind:result.responseKind,
       },pageId);
     } catch (failure) {
       setStatus(null);
-      const message =
-        ranOut
-          ? `The solver did not answer within ${Math.round(REQUEST_TIMEOUT_MS / 1000)} seconds, so the request was stopped. Your problem is still here, press Solve again.`
-          : failure instanceof Error ? failure.message : "The request to the server did not finish. Your problem is still here, press Solve again.";
+      const message = failure instanceof Error ? failure.message : "Could not read generation progress. Reopen your question to reconnect.";
       setError(message);
       onFailed(message,pageId);
     } finally {
-      clearTimeout(timer);
       inFlight.current = false;
       setBusy(false);
     }
-  }, [image, onStarted, onAnswers, onFailed, onSolved, problemText, subject]);
+  }, [image, onStarted, onAnswers, onFailed, onSolved, problemText, subject, notebookId]);
 
   const canSolve = (problemText.trim().length > 0 || image !== null) && !busy;
 

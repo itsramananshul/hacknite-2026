@@ -2,7 +2,7 @@ import type {SupabaseClient} from "@supabase/supabase-js";
 import {type Library, type Notebook, type PageEntry} from "./notebooks";
 
 export interface SavedPage {questionPage: {id:string; notebookId?:string; problemText:string; status:string; [key:string]:unknown}; scene:unknown; solution:string; values:Record<string,number>}
-interface Pending {notebooks:Record<string,Notebook>; pages:Record<string,{entry:PageEntry; payload:SavedPage}>}
+interface Pending {notebooks:Record<string,Notebook>; pages:Record<string,{entry:PageEntry; payload:SavedPage}>; deletedNotebooks?:Record<string,true>}
 const PENDING="chalk-cloud-pending:v1";
 
 // Guest keys stay compatible; signed-in caches never read another account's keys.
@@ -17,11 +17,17 @@ export function readPending(cache:Cache):Pending {
 }
 export function queueNotebooks(cache:Cache,previous:Library,next:Library) {
   const pending=readPending(cache);
-  for(const notebook of next.notebooks)if(JSON.stringify(previous.notebooks.find(n=>n.id===notebook.id))!==JSON.stringify(notebook))pending.notebooks[notebook.id]=notebook;
+  for(const notebook of next.notebooks)if(!pending.deletedNotebooks?.[notebook.id] && (JSON.stringify(previous.notebooks.find(n=>n.id===notebook.id))!==JSON.stringify(notebook)))pending.notebooks[notebook.id]=notebook;
+  cache.setItem(PENDING,JSON.stringify(pending));
+}
+export function queueNotebookDeletion(cache:Cache,id:string) {
+  const pending=readPending(cache);(pending.deletedNotebooks ??= {})[id]=true;
+  delete pending.notebooks[id];
+  for(const [pageId,page] of Object.entries(pending.pages))if(page.entry.notebookId===id)delete pending.pages[pageId];
   cache.setItem(PENDING,JSON.stringify(pending));
 }
 export function queuePage(cache:Cache,entry:PageEntry,payload:SavedPage,notebook:Notebook) {
-  const pending=readPending(cache);pending.notebooks[notebook.id]=notebook;pending.pages[entry.id]={entry,payload};
+  const pending=readPending(cache);if(pending.deletedNotebooks?.[notebook.id])return;pending.notebooks[notebook.id]=notebook;pending.pages[entry.id]={entry,payload};
   cache.setItem(PENDING,JSON.stringify(pending));
 }
 async function allRows(client:SupabaseClient,table:string,columns:string,userId:string) {
@@ -46,16 +52,25 @@ export async function loadCloudLibrary(client:SupabaseClient,userId:string,cache
   }
   for(const {entry,payload} of Object.values(pending.pages)){entries.set(entry.id,entry);cache.setItem(`chalk-page:${entry.id}`,JSON.stringify(payload));}
   cache.setItem(PENDING,JSON.stringify(pending));
-  return {notebooks:[...notebooks.values()],pages:[...entries.values()].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))};
+  return {notebooks:[...notebooks.values()].filter(n=>!pending.deletedNotebooks?.[n.id]),pages:[...entries.values()].filter(p=>!pending.deletedNotebooks?.[p.notebookId]).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))};
 }
 export async function flushCloud(client:SupabaseClient,userId:string,cache:Cache,isCurrent:()=>boolean):Promise<void> {
   const pending=readPending(cache);
   if(!isCurrent())return;
-  const books=Object.values(pending.notebooks);
+  for(const id of Object.keys(pending.deletedNotebooks ?? {})){
+    if(!isCurrent())return;
+    const pages=await client.from("question_pages").delete().eq("user_id",userId).eq("notebook_id",id);
+    if(pages.error)throw new Error(pages.error.message);
+    if(!isCurrent())return;
+    const book=await client.from("notebooks").delete().eq("user_id",userId).eq("id",id);
+    if(book.error)throw new Error(book.error.message);
+  }
+  const books=Object.values(pending.notebooks).filter(n=>!pending.deletedNotebooks?.[n.id]);
   if(books.length){const {error}=await client.from("notebooks").upsert(books.map(n=>({...n,user_id:userId,updated_at:new Date().toISOString()})),{onConflict:"user_id,id"});if(error)throw new Error(error.message);}
   // Check the account again between requests; RLS is the final authority on writes.
   if(!isCurrent())return;
   for(const {entry,payload} of Object.values(pending.pages)){
+    if(pending.deletedNotebooks?.[entry.notebookId])continue;
     if(!isCurrent())return;
     const {error}=await client.from("question_pages").upsert({user_id:userId,id:entry.id,notebook_id:entry.notebookId,title:entry.title.slice(0,160),status:entry.status,payload,updated_at:entry.updatedAt},{onConflict:"user_id,id"});
     if(error)throw new Error(error.message);
@@ -64,5 +79,6 @@ export async function flushCloud(client:SupabaseClient,userId:string,cache:Cache
   const latest=readPending(cache);
   for(const [id,value] of Object.entries(pending.notebooks))if(JSON.stringify(latest.notebooks[id])===JSON.stringify(value))delete latest.notebooks[id];
   for(const [id,value] of Object.entries(pending.pages))if(JSON.stringify(latest.pages[id])===JSON.stringify(value))delete latest.pages[id];
+  for(const id of Object.keys(pending.deletedNotebooks ?? {}))delete latest.deletedNotebooks?.[id];
   cache.setItem(PENDING,JSON.stringify(latest));
 }

@@ -73,12 +73,47 @@ test("constant answers reject variables, hidden time, unsafe calls, and nonfinit
   }
 });
 
-test("read final JSON after prose, reject malformed and empty numeric answers", () => {
+test("read final JSON after prose and preserve written responses without numeric answers", () => {
   const json = JSON.stringify({solutionText:"Solved",answers:[{question:"Distance",expression:"2+3",unit:"m"}]});
   assert.equal(readSolveOutput("Explanation\n"+json).answers[0].value,5);
   assert.equal(readSolveOutput("```json\n"+json+"\n```").answers[0].value,5);
   assert.throws(() => readSolveOutput("{broken}"));
-  assert.throws(() => readSolveOutput('{"solutionText":"Explain","answers":[]}'));
+  assert.equal(readSolveOutput('{"solutionText":"Explain","answers":[]}').solutionText,"Explain");
+});
+
+test("written responses with missing information still build a labelled explanatory diagram",async()=>{
+  for(const explanation of ["A catalyst lowers the activation energy without changing the equilibrium constant.","The derivative of x squared is 2x.","To calculate the force, supply the mass and acceleration."]){
+    let messages=0;let delivered="";
+    const transport:typeof fetch=async(url)=>{
+      const path=new URL(String(url)).pathname;
+      if(path==="/experimental/tool/ids")return Response.json([]);
+      if(path==="/session")return Response.json({id:"written-response-test"});
+      if(!path.endsWith("/message"))return Response.json(true);
+      const diagram=structuredClone(presets.projectile);diagram.answers=[];
+      return Response.json({info:{structured:messages++===0?{solutionText:explanation,answers:[]}:diagram},parts:[]});
+    };
+    const result=await runOpenCodePipeline({problemText:"Explain",image:null},{env:{},fetchImpl:transport,onSolved:r=>{delivered=r.solutionText;}});
+    assert.ok(result.scene);assert.equal(result.solutionText,explanation);assert.equal(delivered,explanation);
+    assert.deepEqual(result.answers,[]);assert.equal(messages,2);
+  }
+});
+
+test("symbolic problems build explanatory scenes without inventing numeric answers",async()=>{
+  const diagram=structuredClone(presets.projectile);diagram.answers=[];
+  let messages=0;let prompt="";
+  const transport:typeof fetch=async(url,init)=>{
+    const path=new URL(String(url)).pathname;
+    if(path==="/experimental/tool/ids")return Response.json([]);
+    if(path==="/session")return Response.json({id:"symbolic-scene-test"});
+    if(!path.endsWith("/message"))return Response.json(true);
+    const body=JSON.parse(String(init?.body));
+    const content=messages++===0 ? {responseKind:"symbolic",solutionText:"y = h + v t - g t squared / 2",answers:[]} : diagram;
+    if(messages===2)prompt=body.parts[0].text;
+    return Response.json({info:{structured:content},parts:[]});
+  };
+  const result=await runOpenCodePipeline({problemText:"Derive the height formula symbolically",image:null},{env:{},fetchImpl:transport});
+  assert.equal(messages,2);assert.ok(result.scene);assert.equal(result.responseKind,"symbolic");assert.deepEqual(result.answers,[]);assert.deepEqual(result.scene.answers,[]);
+  assert.match(prompt,/initial numeric values are illustrative/);assert.match(prompt,/Keep answers=\[\]/);
 });
 
 test("provider selection honors explicit Gemini and local OpenCode; remote bridge rejected", () => {

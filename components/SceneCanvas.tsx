@@ -30,6 +30,7 @@ export interface SceneCanvasProps {
   time: number;
   speed: number;
   restart?: number;
+  cameraRevision?:number;
   onTime: (time: number) => void;
   onComplete: () => void;
   shot: Shot | null;
@@ -43,7 +44,7 @@ export interface SceneCanvasProps {
 const FRAME_GAP_CAP = 0.1;
 const REPORT_SECONDS = 0.1;
 
-function FrameScene({scene,values,shot,onAspect}:{scene:SceneScript;values:Record<string,number>;shot:Shot|null;onAspect:(value:number)=>void}) {
+function FrameScene({scene,values,shot,onAspect,cameraRevision}:{scene:SceneScript;values:Record<string,number>;shot:Shot|null;onAspect:(value:number)=>void;cameraRevision:number}) {
   const camera=useThree(state=>state.camera);
   const size=useThree(state=>state.size);
   const controls=useThree(state=>state.controls) as {target:THREE.Vector3;update:()=>void;maxDistance:number}|null;
@@ -57,7 +58,7 @@ function FrameScene({scene,values,shot,onAspect}:{scene:SceneScript;values:Recor
     camera.updateProjectionMatrix();
     if(controls){controls.target.fromArray(frame.target);controls.maxDistance=Math.max(90,frame.distance*3);controls.update();}
     else camera.lookAt(new THREE.Vector3(...frame.target));
-  },[scene,values,size.width,size.height,camera,controls,shot]);
+  },[scene,values,size.width,size.height,camera,controls,shot,cameraRevision]);
   return null;
 }
 
@@ -253,6 +254,7 @@ export default function SceneCanvas({
   highlight = null,
   onLoop,
   restart = 0,
+  cameraRevision=0,
 }: SceneCanvasProps) {
   const [supported, setSupported] = useState<boolean | null>(null);
   const sceneValues = useMemo(() => Object.fromEntries(scene.variables.map((variable) => {
@@ -290,7 +292,6 @@ export default function SceneCanvas({
 
   return (
     <BoardBoundary key={scene.title}>
-      {presentation.rate<1 ? <span role="note" style={{position:"absolute",top:40,left:18,zIndex:2,fontSize:12,color:"#46566b",pointerEvents:"none"}}>Motion display slowed {Math.round(1/presentation.rate)}× · actual frequency {presentation.frequencyHz.toFixed(1)} Hz</span> : null}
       <Canvas
         shadows
         dpr={[1, 1.75]}
@@ -378,7 +379,7 @@ export default function SceneCanvas({
           maxPolarAngle={Math.PI / 2 - 0.02}
           onStart={onManualOrbit}
         />
-        <FrameScene scene={scene} values={sceneValues} shot={framedShot} onAspect={setBoardAspect} />
+        <FrameScene scene={scene} values={sceneValues} shot={framedShot} onAspect={setBoardAspect} cameraRevision={cameraRevision} />
       </Canvas>
     </BoardBoundary>
   );

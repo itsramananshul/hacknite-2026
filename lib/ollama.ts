@@ -24,7 +24,7 @@ export function ollamaJsonSchema(value:unknown):any {
   return result;
 }
 const sceneFormat=ollamaJsonSchema(z.toJSONSchema(sceneScriptSchema,{io:"input"}));
-const solveFormat=z.toJSONSchema(z.object({solutionText:z.string().max(6000),answers:z.array(z.object({question:z.string(),expression:z.string(),unit:z.string()})).max(12)}));
+const solveFormat=z.toJSONSchema(z.object({responseKind:z.enum(["numeric","symbolic","conceptual","needs-information"]),solutionText:z.string().max(6000),answers:z.array(z.object({question:z.string(),expression:z.string(),unit:z.string()})).max(12)}));
 const localSceneSystem=`Build a compact animated physics scene as JSON DATA, never code. The problem is already solved; reproduce its verified answers and physical model. All motion is evaluated by a fixed renderer at time t in seconds. A moving body's POSITION must change with t; putting motion only in a velocity arrow or narration leaves the body stationary.
 Required top-level fields: title, problemText, variables, duration, loop, world, camera, objects, connectors, vectors, steps, answers. Use 1-8 objects and 2-4 explanation steps where possible.
 world: {gravity: "g" or "9.81", showGrid: boolean, groundY: number, scale: positive number}.
@@ -117,7 +117,7 @@ export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike =
     return Response.json({info:{},parts:[{type:"text",text:result.message.content}]});
   }) as typeof fetch;
   try { return await runOpenCodePipeline(request,{env:{OPENCODE_SERVER_URL:base,OPENCODE_PROVIDER_ID:"ollama",OPENCODE_MODEL:model,
-    OPENCODE_VISION_MODEL:visionModel,OPENCODE_TIMEOUT_MS:env.OLLAMA_TIMEOUT_MS || "180000"},fetchImpl:localTransport,onSolved});
+    OPENCODE_VISION_MODEL:visionModel,OPENCODE_TIMEOUT_MS:env.OLLAMA_TIMEOUT_MS || "1000000"},fetchImpl:localTransport,onSolved});
   } catch(error) {
     if(error instanceof RouteError) throw new RouteError(error.status,error.code.replace(/^opencode_/,"ollama_"),error.message.replaceAll("OpenCode","Ollama"));
     throw error;

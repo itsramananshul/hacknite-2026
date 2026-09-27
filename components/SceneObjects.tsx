@@ -51,8 +51,8 @@ function Shape({ object, lit }: { object: SceneObject; lit: boolean }) {
       color={/^(ground|floor|base)$/i.test(object.id) ? "#D0D6DC" : object.color}
       roughness={0.6}
       metalness={0.08}
-      emissive={lit ? "#a3e0c0" : "#000000"}
-      emissiveIntensity={lit ? 0.42 : 0}
+      emissive={lit ? "#006cff" : "#000000"}
+      emissiveIntensity={lit ? 0.8 : 0}
     />
   );
   switch (object.shape) {
@@ -300,7 +300,7 @@ function Trail({
           live.current = node;
         }}
         points={seed}
-        color="#176BFA"
+        color={/^curve/.test(object.id) ? object.color : "#176BFA"}
         lineWidth={2.2}
         transparent
         opacity={0.95}

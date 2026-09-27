@@ -9,8 +9,8 @@ import { errorResponse, parseSolveRequest, readRequestJson } from "@/lib/gemini"
 import { solveProblem } from "@/lib/solver";
 
 export const runtime = "nodejs";
-// Three Gemini calls at 45s each is the worst case: solve, scene, repair.
-export const maxDuration = 180;
+// Each model request may run for up to 1,000 seconds.
+export const maxDuration = 300;
 
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -20,17 +20,19 @@ export async function POST(request: Request): Promise<Response> {
     if(request.headers.get("accept")?.includes("application/x-ndjson")) {
       const encoder=new TextEncoder();
       let cancelled=false;
+      let heartbeat:ReturnType<typeof setInterval>|undefined;
       const stream=new ReadableStream({
         start(controller) {
           const send=(event:unknown)=>{if(!cancelled) controller.enqueue(encoder.encode(JSON.stringify(event)+"\n"));};
+          heartbeat=setInterval(()=>send({type:"progress"}),10000);
           void solveProblem(parsed,result=>send({type:"answers",result})).then(result=>{
             send({type:"complete",result});
           }).catch(async error=>{
             const response=errorResponse(error);
             send({type:"error",...(await response.json())});
-          }).finally(()=>{if(!cancelled) controller.close();});
+          }).finally(()=>{clearInterval(heartbeat);if(!cancelled) controller.close();});
         },
-        cancel(){cancelled=true;},
+        cancel(){cancelled=true;clearInterval(heartbeat);},
       });
       return new Response(stream,{headers:{"Content-Type":"application/x-ndjson","Cache-Control":"no-store"}});
     }

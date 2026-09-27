@@ -3,9 +3,11 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  openGraph:{title:"Chalk",images:[{url:"/brand/chalk-logo.png",width:1254,height:1254,alt:"Chalk"}]},
+  twitter:{card:"summary",title:"Chalk",images:["/brand/chalk-logo.png"]},
   title: "Chalk",
   description:
-    "Explore physics problems through interactive 3D scenes, equations, and explanations.",
+    "Explore physics, chemistry and mathematics through interactive simulations, worked solutions, and explanation videos.",
 };
 
 export const viewport: Viewport = {

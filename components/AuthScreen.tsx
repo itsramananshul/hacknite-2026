@@ -1,8 +1,12 @@
 "use client";
+import ChalkLogo from "./ChalkLogo";
 import AccountPanel from "./AccountPanel";
 export default function AuthScreen({checking,verifying,error}:{checking:boolean;verifying:boolean;error:string}){
+  if(checking || (verifying && !error)) return <main className="nb-app nb-session-loading" aria-busy="true">
+    <ChalkLogo/><p role="status">Opening your notebook…</p>
+  </main>;
   return <main className="nb-app nb-auth">
-    <header className="nb-auth-header"><span className="nb-wordmark">Chalk</span><span className="nb-auth-caption">A notebook for the curious.</span></header>
+    <header className="nb-auth-header"><ChalkLogo/><span className="nb-auth-caption">A notebook for the curious.</span></header>
     <div className="nb-auth-layout">
       <section className="nb-auth-intro" aria-labelledby="auth-intro-title">
         <p className="nb-eyebrow">Physics · Chemistry · Mathematics</p>

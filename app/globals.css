@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./chalk-tokens.css";
 @import "./notebook.css";
+@import "./chalk-studio.css";
 
 :root {
   --ink: var(--board-deep);

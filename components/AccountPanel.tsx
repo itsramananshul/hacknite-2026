@@ -13,6 +13,7 @@ export default function AccountPanel({standalone=false,onImport}:{standalone?:bo
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState("");
   const [error,setError]=useState("");
+  const [counts,setCounts]=useState<{notebooks:number;questions:number}|null>(null);
   const client=getSupabaseClient();
   useEffect(()=>{
     if(!client){setLoading(false);return;}
@@ -24,6 +25,10 @@ export default function AccountPanel({standalone=false,onImport}:{standalone?:bo
   useEffect(()=>{
     if(!client || !session) return;
     let alive=true;
+    Promise.all([
+      client.from("notebooks").select("id",{count:"exact",head:true}).eq("user_id",session.user.id),
+      client.from("question_pages").select("id",{count:"exact",head:true}).eq("user_id",session.user.id),
+    ]).then(([books,pages])=>{if(alive&&!books.error&&!pages.error)setCounts({notebooks:books.count??0,questions:pages.count??0});});
     client.from("profiles").select("display_name").eq("id",session.user.id).maybeSingle().then(({data,error})=>{
       if(!alive)return;
       if(error){setError(error.message);return;}
@@ -47,9 +52,12 @@ export default function AccountPanel({standalone=false,onImport}:{standalone?:bo
   async function saveProfile(event:React.FormEvent) {
     event.preventDefault();if(!client || !session || busy)return;
     setBusy(true);setError("");setMessage("");
-    const {error}=await client.from("profiles").upsert({id:session.user.id,display_name:name.trim(),updated_at:new Date().toISOString()});
-    if(error)setError(error.message);else setMessage("Profile saved.");
-    setBusy(false);
+    try{
+      const {error}=await client.from("profiles").upsert({id:session.user.id,display_name:name.trim(),updated_at:new Date().toISOString()});
+      if(error)throw error;
+      setMessage("Profile saved.");
+    }catch(error){setError(error instanceof Error?error.message:"Your profile could not be saved.");}
+    finally{setBusy(false);}
   }
   async function resendConfirmation(){
     if(!client || busy)return;
@@ -63,14 +71,15 @@ export default function AccountPanel({standalone=false,onImport}:{standalone?:bo
     <h2 className="nb-title">{session?"Your account":mode==="signin"?"Welcome back.":"Start your notebook."}</h2>
     {!session ? <p className="nb-note">{mode==="signin"?"Sign in to pick up where you left off.":"Create an account to save your questions and discoveries."}</p> : null}
     {!client ? <p role="status">Account connection is not configured.</p> : loading ? <p role="status">Loading account…</p> : session ? <>
-      <p className="nb-note">Signed in as {session.user.email}</p>
-      <form onSubmit={saveProfile}>
+      <div className="nb-account-identity"><span className="nb-account-avatar" aria-hidden="true">{(name.trim()||session.user.email||"C").slice(0,1).toUpperCase()}</span><div><strong>{name.trim()||"Chalk member"}</strong><p className="nb-note">{session.user.email}</p></div></div>
+      <section className="nb-account-block"><h3>Profile</h3><p className="nb-note">How your name appears in your workspace.</p><form onSubmit={saveProfile}>
         <label className="nb-field" htmlFor="profile-name">Display name</label>
         <input id="profile-name" name="name" autoComplete="name" maxLength={80} value={name} onChange={e=>setName(e.target.value)} />
         <button className="nb-btn" disabled={busy}>Save profile{busy?"…":""}</button>
-      </form>
-      {onImport ? <button type="button" className="nb-btn" onClick={onImport}>Import pages from this browser</button> : null}
-      <button type="button" className="nb-btn" disabled={busy} onClick={async()=>{setBusy(true);const {error}=await client.auth.signOut();if(error)setError(error.message);setBusy(false);}}>Sign out</button>
+      </form></section>
+      <section className="nb-account-block"><h3>Your workspace</h3><div className="nb-account-stats"><div><strong>{counts?.notebooks??"—"}</strong><span>Notebooks</span></div><div><strong>{counts?.questions??"—"}</strong><span>Questions</span></div></div><p className="nb-note">Your saved questions are connected to this account across devices.</p>{onImport ? <button type="button" className="nb-btn" onClick={onImport}>Import questions from this browser</button> : null}</section>
+      <section className="nb-account-block"><h3>Account details</h3><dl className="nb-account-details"><dt>Email</dt><dd>{session.user.email_confirmed_at?"Verified":"Awaiting confirmation"}</dd><dt>Joined</dt><dd>{new Date(session.user.created_at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}</dd></dl></section>
+      <section className="nb-account-block"><h3>Session</h3><p className="nb-note">Sign out of Chalk on this browser.</p><button type="button" className="nb-btn" disabled={busy} onClick={async()=>{setBusy(true);try{const {error}=await client.auth.signOut({scope:"local"});if(error)throw error;}catch(error){setError(error instanceof Error?error.message:"Sign-out failed.");}finally{setBusy(false);}}}>Sign out</button></section>
     </> : <>
       <form onSubmit={authenticate}>
         <label className="nb-field" htmlFor="account-email">Email address</label><input id="account-email" name="email" type="email" placeholder="you@example.com" autoComplete="email" spellCheck={false} required value={email} onChange={e=>setEmail(e.target.value)} />

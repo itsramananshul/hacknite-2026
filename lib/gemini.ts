@@ -11,6 +11,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { sceneScriptSchema, type SceneScript } from "./schema";
 import { validateSceneScript } from "./validate";
+import {buildMathVisual,mathVisualSchema} from "./math-visual";
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -23,7 +24,7 @@ export const MAX_PROBLEM_CHARS = 6000;
 export const MAX_INSTRUCTION_CHARS = 1000;
 
 const DEFAULT_MODEL = "gemini-3.8-flash";
-const REQUEST_TIMEOUT_MS = 45_000;
+const REQUEST_TIMEOUT_MS = 1_000_000;
 const SOLVE_MAX_OUTPUT_TOKENS = 4096;
 const SCENE_MAX_OUTPUT_TOKENS = 8192;
 // Call A ends with one JSON object. The cap keeps a runaway answer from filling
@@ -258,7 +259,7 @@ async function callSolve(input: InteractionInput[]): Promise<GeminiReply> {
       {
         model: modelFor("GEMINI_SOLVE_MODEL"),
         input,
-        system_instruction: SOLVE_SYSTEM,
+        system_instruction: SOLVE_SYSTEM + "\nFor symbolic, conceptual, chemistry mechanism, or proof questions, provide the complete reasoning with answers=[] when no numeric answer is requested. No code execution is required for a nonnumeric response. Use $...$ and $$...$$ LaTeX delimiters for mathematics. Do not reject missing numbers or invent experimental facts.",
         tools: [{ type: "code_execution" }],
         generation_config: { thinking_level: "low", max_output_tokens: SOLVE_MAX_OUTPUT_TOKENS },
         store: false,
@@ -272,15 +273,15 @@ async function callSolve(input: InteractionInput[]): Promise<GeminiReply> {
   return readReply(interaction);
 }
 
-async function callScene(prompt: string): Promise<GeminiReply> {
+async function callScene(prompt: string, plan=false): Promise<GeminiReply> {
   let interaction;
   try {
     interaction = await client().interactions.create(
       {
         model: modelFor("GEMINI_SCENE_MODEL"),
         input: [{ type: "text", text: prompt }],
-        system_instruction: SCENE_SYSTEM,
-        response_format: { type: "text", mime_type: "application/json", schema: sceneSchemaForApi() },
+        system_instruction: plan?"Return only a compact mathematical graph plan. Use safe arithmetic functions in curve expressions, with x as horizontal coordinate. Clearly label examples of unspecified functions as illustrations, not proofs. Bounds must fit curves across all parameter values. No physical apparatus.":SCENE_SYSTEM,
+        response_format: { type: "text", mime_type: "application/json", schema: plan?toApiSchema(z.toJSONSchema(mathVisualSchema) as Record<string,unknown>):sceneSchemaForApi() },
         generation_config: { thinking_level: "low", max_output_tokens: SCENE_MAX_OUTPUT_TOKENS },
         store: false,
         stream: false,
@@ -398,7 +399,9 @@ export interface SolvedAnswer {
 }
 
 export interface SolveResult {
+  interpretedProblem?:string;
   scene: SceneScript | null;
+  responseKind?: "numeric"|"symbolic"|"conceptual"|"needs-information";
   solutionText: string;
   answers: SolvedAnswer[];
   warnings: string[];
@@ -656,7 +659,7 @@ async function runSolve(request: PipelineRequest): Promise<{ solutionText: strin
   input.push({ type: "text", text: solvePromptText(request) });
 
   const reply = await callSolve(input);
-  if (reply.codeResults.length === 0) {
+  if (reply.codeResults.length === 0 && !reply.text.includes('"answers":[]') && !/"answers"\s*:\s*\[\s*\]/.test(reply.text)) {
     throw fail(
       502,
       "solve_not_computed",
@@ -684,13 +687,7 @@ async function runSolve(request: PipelineRequest): Promise<{ solutionText: strin
   if (!parsed.success) {
     throw fail(502, "solve_output_invalid", `Gemini's final JSON did not match what Chalk reads: ${issueText(parsed.error)}`);
   }
-  if (parsed.data.answers.length === 0) {
-    throw fail(
-      422,
-      "no_numeric_answer",
-      "That question has no number to animate. Chalk solves problems that end in a number, so an explain, compare or discuss question has nothing to show on the board. Try a problem that asks for a value, and the presets still work offline.",
-    );
-  }
+  if(parsed.data.answers.length===0)return {solutionText:parsed.data.solutionText,answers:[],warnings:[]};
   const reconciled = reconcile(parsed.data.answers, printedAnswers(reply.codeResults));
   return {
     solutionText: truncate(parsed.data.solutionText, MAX_FINAL_CHARS),
@@ -700,6 +697,7 @@ async function runSolve(request: PipelineRequest): Promise<{ solutionText: strin
 }
 
 interface SceneRequest {
+  subject?:"physics"|"chemistry"|"mathematics";
   problemText: string;
   fromImage: boolean;
   solutionText: string;
@@ -812,6 +810,11 @@ function safeScene(reply: SceneReply): { scene: SceneScript; warnings: string[] 
 }
 
 async function runScene(request: SceneRequest): Promise<{ scene: SceneScript | null; warnings: string[] }> {
+  if(request.subject==="mathematics"&&!request.currentScene){
+    const reply=await callScene(`Visualize this problem and its reasoning with 1–3 informative curves and concise steps. Use valid LaTeX in equations, label illustrative examples and demonstration parameters. Never pretend an example proves a general theorem.\nProblem: ${request.problemText}\nSolution: ${request.solutionText}`,true);
+    const scene=buildMathVisual(JSON.parse(unwrapFence(reply.text)),request.answers.map(answer=>({...answer,expression:String(answer.value)})));
+    return {scene,warnings:[]};
+  }
   const expected = request.answers.map((answer) => ({ value: answer.value, unit: answer.unit }));
   const base = scenePrompt(request);
   const first = await callSceneForPrompt(base);
@@ -866,6 +869,7 @@ async function runScene(request: SceneRequest): Promise<{ scene: SceneScript | n
 async function runPipeline(request: PipelineRequest): Promise<SolveResult> {
   const solved = await runSolve(request);
   const built = await runScene({
+    subject:request.subject,
     problemText: request.problemText,
     fromImage: request.image !== null,
     solutionText: solved.solutionText,
@@ -883,7 +887,7 @@ async function runPipeline(request: PipelineRequest): Promise<SolveResult> {
 
 /** POST /api/solve: read the problem, solve it with code, then build the scene. */
 export async function solveProblem(request: SolveRequest): Promise<SolveResult> {
-  return runPipeline({ problemText: request.problemText, image: request.image });
+  return runPipeline({ problemText: request.problemText, image: request.image,subject:request.subject });
 }
 
 /**

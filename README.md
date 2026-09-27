@@ -1,8 +1,10 @@
 # Chalk
 
-An interactive science and mathematics notebook by Anshul Raman. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+<p align="center"><img src="public/brand/chalk-logo.png" alt="Chalk logo" width="120" /></p>
 
-The interface follows the supplied notebook design: warm white pages, serif derivations, blue controls, and a light 3D viewport.
+An interactive science and mathematics notebook by Anshul Raman. Give it a numerical or symbolic problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+
+The interface follows the supplied notebook design: white surfaces, navy sans-serif text, blue controls, compact navigation, and a light 3D viewport. Exact-value inputs complement the sliders; playback stays below the scene.
 
 ## Features
 
@@ -13,6 +15,7 @@ The interface follows the supplied notebook design: warm white pages, serif deri
 - Predict before Play with hidden answers and numerical feedback.
 - Clickable equations that highlight the corresponding step's objects and vectors.
 - Visible problem statements, model assumptions, warnings, and worked solutions.
+- Conceptual and symbolic questions keep their written explanations and can generate schematic visual explanations with clearly labelled demonstration parameters. These do not pretend illustrative values were supplied in the problem. Problems genuinely missing required data keep the model's request for that information instead of a generic numeric-answer error.
 - Text, photo upload, manual webcam capture, and natural-language scene edits.
 - Each submitted question opens its own notebook page immediately, with a generation status and streamed answers. Pages and manually created notebooks are saved to your Supabase account and can be reopened from another signed-in browser. The Notebooks rail opens the notebook and question tree. New accounts create their own first notebook.
 - Optional browser narration, muted initially. Availability depends on the browser.

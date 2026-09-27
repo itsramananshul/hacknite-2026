@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {accountStorage,queuePage,readPending,flushCloud,loadCloudLibrary,type SavedPage} from "../lib/cloud-notebooks";
+import {accountStorage,queueNotebookDeletion,queuePage,readPending,flushCloud,loadCloudLibrary,type SavedPage} from "../lib/cloud-notebooks";
 import {type Notebook,type PageEntry} from "../lib/notebooks";
 const physics:Notebook={id:"physics",name:"My physics class",subject:"physics"};
 function memory(){const rows=new Map<string,string>();return {getItem:(k:string)=>rows.get(k)??null,setItem:(k:string,v:string)=>{rows.set(k,v);}};}
@@ -47,4 +47,20 @@ test("one device uploads a full question and a separate empty device loads its s
   rows.question_pages[0].payload={...complete,solution:"Remote update"};
   await loadCloudLibrary(client,"user-a",second);
   assert.equal(JSON.parse(second.getItem(`chalk-page:${entry.id}`)!).solution,"Remote update");
+});
+
+test("notebook deletion survives an offline retry and hides stale remote rows",async()=>{
+ const cache=accountStorage(memory(),"user-a");queuePage(cache,entry,payload,physics);queueNotebookDeletion(cache,physics.id);
+ assert.equal(readPending(cache).pages[entry.id],undefined);
+ const client={from:(table:string)=>({select:()=>({eq:()=>({order:()=>({range:async()=>({error:null,data:table==="notebooks"?[physics]:[{id:entry.id,notebook_id:physics.id,title:entry.title,status:entry.status,updated_at:entry.updatedAt,payload}]})})})}),delete:()=>({eq:()=>({eq:async()=>({error:{message:"offline"}})})})})} as unknown as SupabaseClient;
+ assert.deepEqual(await loadCloudLibrary(client,"user-a",cache),{notebooks:[],pages:[]});
+ await assert.rejects(flushCloud(client,"user-a",cache,()=>true),/offline/);
+ assert.equal(readPending(cache).deletedNotebooks?.physics,true);
+});
+test("deleting a notebook scopes both deletes to its owner and notebook",async()=>{
+ const cache=accountStorage(memory(),"user-a");queueNotebookDeletion(cache,physics.id);const calls:unknown[]=[];
+ const client={from:(table:string)=>({delete:()=>({eq:(owner:string,user:string)=>({eq:async(column:string,id:string)=>{calls.push([table,owner,user,column,id]);return {error:null};}})})})} as unknown as SupabaseClient;
+ await flushCloud(client,"user-a",cache,()=>true);
+ assert.deepEqual(calls,[["question_pages","user_id","user-a","notebook_id","physics"],["notebooks","user_id","user-a","id","physics"]]);
+ assert.equal(Object.keys(readPending(cache).deletedNotebooks ?? {}).length,0);
 });

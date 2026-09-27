@@ -11,7 +11,7 @@ import textwrap
 import wave
 from video_layout import place_caption, diagram_bounds
 
-from manim import (Scene, Text, MathTex, VGroup, Circle, Rectangle, Line, Arrow,
+from manim import (ImageMobject, Scene, Text, MathTex, VGroup, Circle, Rectangle, Line, Arrow,
                    FadeIn, FadeOut, Write, Create, ValueTracker, always_redraw,
                    VMobject, Triangle, config, tempconfig, linear, UP, DOWN, LEFT, RIGHT)
 import numpy as np
@@ -65,16 +65,24 @@ def audio_duration(index, default):
 class Explanation(Scene):
     def construct(self):
         self.camera.background_color = GREEN
-        brand = Text("Chalk", font="Segoe Print", font_size=25, color=MINT).to_corner(UP + LEFT, buff=0.3)
+        brand = ImageMobject(str(Path(__file__).resolve().parent.parent / "public" / "brand" / "chalk-logo.png"))
+        brand.height = 0.65
+        brand.to_corner(UP + LEFT, buff=0.3)
         self.add(brand)
         motion=payload.get("motionPresentation",{})
         if motion.get("rate",1)<1:
             notice=Text(f"Motion display slowed {1/motion['rate']:.0f}x; actual frequency {motion['frequencyHz']:.1f} Hz",font="Arial",font_size=12,color=MINT).to_corner(DOWN+LEFT,buff=.3)
             self.add(notice)
-        title = paragraph(scene["title"], width=45, size=37).move_to([0, 2.3, 0])
+        title = paragraph(scene["title"], width=45, size=37, max_width=9.5)
         if title.height > 1: title.scale_to_fit_height(1)
-        problem = paragraph(scene["problemText"], width=76, size=25).move_to([0, 0.4, 0])
+        problem = paragraph(scene["problemText"], width=76, size=25, max_width=9.5)
         if problem.height > 3.4: problem.scale_to_fit_height(3.4)
+        # Stack measured text bounds: a multiline title must never share the
+        # description's vertical space. Scale the stack as one unit so the
+        # gap is preserved even for unusually long input.
+        intro = VGroup(title, problem).arrange(DOWN, buff=.35)
+        if intro.height > 4.5: intro.scale_to_fit_height(4.5)
+        intro.move_to([0, .35, 0])
         footer = Text("Understand the solution, then explore the simulation",font="Arial",font_size=18,color=MINT).move_to([0,-2.8,0])
         self.play(Write(title), FadeIn(problem), FadeIn(footer), run_time=1)
         self.voice(0)
@@ -133,13 +141,35 @@ class Explanation(Scene):
             body_angles.append(0)
         leaders=[Line([0,0,0],[.01,0,0],color=MINT,stroke_width=1).set_z_index(30) for _ in pieces]
         connections=[(connector,VMobject(color=CREAM,stroke_width=2)) for connector in scene["connectors"]]
+        trails=[(index,VMobject(color=obj["color"],stroke_width=2.5).set_z_index(10))
+                for index,obj in enumerate(scene["objects"]) if obj.get("trail")]
+        graph = "Graph: horizontal" in scene["problemText"]
 
         def update_diagram(group):
             t = tracker.get_value()
-            progress = np.clip(t/scene["duration"]*240,0,240)
+            last = len(frames)-1
+            progress = np.clip(t/scene["duration"]*last,0,last)
             a = int(progress)
-            b = min(a+1,240)
+            b = min(a+1,last)
             blend = progress-a
+            for index,line in trails:
+                # Graphs show the entire relationship; physical trajectories
+                # show history up to the current time. Rebuild from samples so
+                # seeking backwards never leaves stale strokes behind.
+                end = last if graph else a
+                line.clear_points()
+                pen_down = False
+                for frame in frames[:end+1]:
+                    sample=frame["objects"][index]
+                    if not sample["visible"]:
+                        pen_down=False
+                        continue
+                    position=point(sample["position"])
+                    if pen_down: line.add_line_to(position)
+                    else: line.start_new_path(position)
+                    pen_down=True
+                line.set_fill(opacity=0)
+                line.set_stroke(opacity=1 if end>0 else 0)
             for index, obj in enumerate(scene["objects"]):
                 first = frames[a]["objects"][index]
                 position = (1-blend)*np.array(first["position"])+blend*np.array(frames[b]["objects"][index]["position"])
@@ -217,7 +247,7 @@ class Explanation(Scene):
                         leaders[index].put_start_and_end_on(start,end).set_opacity(.65)
 
         # Captions render above every body, so a nearby body cannot hide them.
-        drawing=VGroup(*leaders,*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
+        drawing=VGroup(*[line for index,line in trails],*leaders,*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
         drawing.add_updater(update_diagram)
         update_diagram(drawing)
         divider=Line([-.5,2.1,0],[-.5,-2.6,0],color="#3A6B5D")

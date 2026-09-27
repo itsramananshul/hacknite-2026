@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import {withWorkflow} from "workflow/next";
 import { networkInterfaces } from "node:os";
 
 const config: NextConfig = {
@@ -8,4 +9,4 @@ const config: NextConfig = {
       .map(address => address.address))],
 };
 
-export default config;
+export default withWorkflow(config);
