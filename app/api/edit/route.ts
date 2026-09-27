@@ -1,28 +1,19 @@
-import {
-  assertSceneIdentity,
-  editPrompt,
-  errorResponse,
-  parseImageDataUrl,
-  parseRequest,
-  editRequestSchema,
-  readRequestJson,
-  requestScene,
-} from "@/lib/gemini";
-import { resolveScene } from "@/lib/schema";
+// POST /api/edit: one change to a scene that is already on the board.
+//
+// The change goes through the same two calls as a solve, so the scene and the
+// answer panel move to the new numbers together, and it comes back in the same
+// shape as /api/solve.
+import { editProblem, errorResponse, parseEditRequest, readRequestJson } from "@/lib/gemini";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Three Gemini calls at 45s each is the worst case: solve, scene, repair.
+export const maxDuration = 180;
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const body = parseRequest(editRequestSchema, await readRequestJson(request));
-    const image = parseImageDataUrl(body.image);
-    // The scene is resolved first so the model edits the values the engine and
-    // the solvers will actually use, not the raw labels.
-    const { scene: current } = resolveScene(body.scene);
-    const { scene } = await requestScene({ image, prompt: editPrompt(current, body.instruction) });
-    assertSceneIdentity(current, scene);
-    return Response.json({ scene });
+    const body = await readRequestJson(request);
+    const { scene, instruction } = parseEditRequest(body);
+    return Response.json(await editProblem(scene, instruction));
   } catch (error) {
     return errorResponse(error);
   }

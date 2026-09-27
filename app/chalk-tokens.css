@@ -1,0 +1,169 @@
+/* =============================================================================
+   chalk-tokens.css — the Chalk design system
+   Single source of truth for colour, typography, spacing, radius, elevation and
+   motion. Every value in index.html resolves through these tokens; no colour,
+   size, radius or duration is hard-coded in the prototype.
+
+   Ground: one chalkboard family (deep green) plus a single inverted
+   "chalk paper" surface reserved for the Answer block. The inverted surface's
+   accent colours are chosen and contrast-audited independently — they are not
+   the board accents reused on a light ground.
+   ========================================================================== */
+
+/* OD-LAYOUT-PRIMITIVES v1 — structure only: display, flex/grid, overflow, wrapping, ratio.
+   Put this @layer first; product CSS outside the layer always wins. */
+@layer od-layout {
+  :where(.od-stack,.od-row,.od-row-top,.od-cluster,.od-grid,.od-field,.od-stat,.od-cell,.od-tile) > :where(*) { min-width: 0; }
+
+  /* containers */
+  .od-stack   { display: flex; flex-direction: column; gap: var(--od-gap, 8px); }
+  .od-row     { display: flex; align-items: center; gap: var(--od-gap, 8px); }
+  .od-row-top { display: flex; align-items: flex-start; gap: var(--od-gap, 8px); }
+  .od-cluster { display: flex; flex-wrap: wrap; align-items: center; gap: var(--od-gap, 8px); }
+  .od-fill    { flex: 1 1 0; min-width: 0; }
+  .od-fixed   { flex: none; }
+  .od-grid    { display: grid; gap: var(--od-gap, 12px); grid-template-columns: repeat(var(--od-cols, 3), minmax(0, 1fr)); }
+
+  /* stacked information: each piece is its own line — never sibling inline spans */
+  .od-stat, .od-field, .od-cell { display: grid; gap: var(--od-gap, 2px); }
+  :where(.od-stat,.od-field,.od-cell) > :where(*) { display: block; }
+  .od-tile { display: grid; grid-template-rows: auto 1fr; }
+  :where(.od-tile) > :where(*) { display: block; }
+
+  /* media keeps its intrinsic ratio by default; never a distorted or cropped
+     cover by accident. height:auto lets the ratio win over an <img height="…">
+     attribute. Cropping to a uniform box is an explicit opt-in: set --od-ratio
+     AND add .od-media-cover together (per the core rule, only where a crop is
+     deliberate — tile thumbs, decorative fills — never on full-frame content). */
+  .od-media { display: block; width: 100%; height: auto; aspect-ratio: var(--od-ratio, auto); }
+  .od-media-cover { object-fit: cover; }
+
+  /* data text only — authored copy is rewritten to its budget instead */
+  .od-truncate { display: block; max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .od-clamp-2, .od-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+  .od-clamp-2 { -webkit-line-clamp: 2; }
+  .od-clamp-3 { -webkit-line-clamp: 3; }
+  .od-lines-2 { min-height: calc(2 * 1.4em); }   /* block-level reservation for a shared baseline */
+  .od-nowrap  { white-space: nowrap; }           /* 数字+单位 · 价格+起 · 日期+星期 */
+  .od-keep    { word-break: keep-all; overflow-wrap: anywhere; } /* CJK labels break at spaces / <wbr> first */
+
+  /* screen skeleton (optional): bars take their own space, the middle scrolls — no padding guessed for chrome */
+  .od-screen { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; height: 100%; }
+  .od-scroll { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+
+  /* horizontal rail: the next item peeks at the edge; trailing room survives overflow */
+  .od-rail { display: flex; gap: var(--od-gap, 8px); overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none;
+             padding-inline: var(--od-rail-pad, 16px); scroll-padding-inline: var(--od-rail-pad, 16px); }
+  .od-rail::-webkit-scrollbar { display: none; }
+  :where(.od-rail) > :where(*) { flex: none; scroll-snap-align: start; }
+  :where(.od-rail) > :where(:last-child) { margin-inline-end: var(--od-rail-pad, 16px); }
+
+  .od-spacer { flex: none; visibility: hidden; pointer-events: none; }
+  .od-touch  { min-width: 44px; min-height: 44px; }
+}
+/* /OD-LAYOUT-PRIMITIVES v1 */
+
+
+:root {
+  /* ---- Ground: the chalkboard ------------------------------------------------ */
+  --board-deep:   #0F2A24;   /* app shell, header, deepest recess */
+  --board:        #17362E;   /* board surface, inspector body */
+  --board-raised: #1E4238;   /* raised controls, cards, inputs */
+  --board-sunken: #122C25;   /* wells, tracks, code blocks */
+  --line:         #2A5449;   /* hairline borders */
+  --line-strong:  #3A6B5D;   /* emphasised hairline, focus-adjacent */
+
+  /* ---- Ink: chalk ------------------------------------------------------------ */
+  --chalk:        #F2EDE1;   /* primary ink            9.50:1 on --board-raised */
+  --chalk-dim:    #BFCBC2;   /* secondary ink          6.68:1 on --board-raised */
+  --chalk-faint:  #8FA398;   /* decorative hairlines, watermarks only */
+
+  /* ---- The inverted surface: chalk paper (Answer block only) ---------------- */
+  --paper:        #F4EFE3;
+  --paper-ink:    #1A2420;   /* 13.90:1 on --paper */
+  --paper-ink-2:  #4A5A54;   /*  6.35:1 on --paper */
+  --paper-line:   #D5CCB8;
+  --paper-mint:   #1F5C4B;   /*  6.80:1 on --paper */
+  --paper-amber:  #8A5A0E;   /*  5.16:1 on --paper */
+  --paper-peach:  #A24E2E;   /*  4.99:1 on --paper */
+
+  /* ---- Semantic accents: signal only, never decoration ------------------------ */
+  --mint:   #79D6B0;  /* applied / launch force, success, selection   6.37:1 on --board-raised */
+  --peach:  #F2A585;  /* gravity and normal force                     5.55:1 on --board-raised */
+  --amber:  #E8B75C;  /* friction and kinetic energy                   6.01:1 on --board-raised */
+  --rose:   #E88C8C;  /* destructive / error                          5.06:1 on --board-raised */
+  --mint-wash:   rgba(121, 214, 176, 0.13);
+  --peach-wash:  rgba(242, 165, 133, 0.13);
+  --amber-wash:  rgba(232, 183, 92, 0.13);
+  --rose-wash:   rgba(232, 140, 140, 0.14);
+
+  /* ---- Typography ------------------------------------------------------------
+     IBM Plex Sans — controls and explanations (engineering credibility, not a
+     stock UI face). IBM Plex Mono — every number, unit and panel label, tabular
+     so readouts do not jitter as they update. Caveat — the wordmark and chalk
+     annotations on the board only. */
+  --font-ui:   "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-hand: "Caveat", "Segoe Script", cursive;
+
+  --fs-wordmark: 26px;    /* Caveat, header only */
+  --fs-title:    19px;    /* screen title */
+  --fs-body:     16px;    /* primary body copy — baseline floor */
+  --fs-support:  15px;    /* helper, derivation, assumptions */
+  --fs-label:    12px;    /* mono, uppercase, tracked — panel labels */
+  --fs-micro:    11px;    /* mono, tracked — axis ticks, badges */
+  --fs-readout:  16px;    /* live numeric readout */
+  --fs-answer:   34px;    /* mono, the answer numeral */
+  --fs-chalk:    22px;    /* Caveat, board annotations */
+
+  --lh-tight:  1.25;
+  --lh-body:   1.6;
+  --lh-note:   1.55;
+  --tr-label:  0.09em;
+  --tr-micro:  0.14em;
+
+  /* ---- Spacing: 4/8 rhythm, compact density tier --------------------------- */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 20px; --s6: 24px; --s7: 32px; --s8: 40px; --s9: 48px;
+  --gap-row:  12px;   /* inspector rows */
+  --gap-stack: 20px;  /* inspector sections */
+
+  /* ---- Radius: restrained. Hairline borders, not big soft cards. ------------- */
+  --r-sm: 4px;    /* inputs, chips, badges */
+  --r-md: 8px;    /* panels, buttons */
+  --r-lg: 12px;   /* dialogs, overlays */
+  --r-pill: 999px;
+
+  /* ---- Elevation: one shadow, dialogs only ---------------------------------- */
+  --shadow-pop: 0 24px 60px rgba(0, 0, 0, 0.5);
+
+  /* ---- Motion: 150–300ms interactions, ≤400ms transitions -------------------- */
+  --d-fast: 150ms;
+  --d-base: 220ms;
+  --d-slow: 300ms;
+  --d-mode: 240ms;      /* Draw ⇄ Simulate */
+  --e-out:  cubic-bezier(0.22, 0.61, 0.36, 1);
+  --e-in:   cubic-bezier(0.55, 0.06, 0.68, 0.19);
+  --stagger: 40ms;
+
+  /* ---- Layout ---------------------------------------------------------------- */
+  --hdr-h: 56px;
+  --bar-h: 56px;
+  --insp-w: 340px;
+  --bar-pad: 16px;
+  --rail-pad: 16px;
+  --od-gap: var(--s3);
+
+  /* ---- Board rendering (consumed by the canvas renderer) -------------------- */
+  --board-line: var(--chalk-faint);
+  --force-g: var(--peach);
+  --force-n: var(--chalk-dim);
+  --force-f: var(--amber);
+  --force-a: var(--mint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --d-fast: 0ms; --d-base: 0ms; --d-slow: 0ms; --d-mode: 0ms; --stagger: 0ms;
+  }
+}
