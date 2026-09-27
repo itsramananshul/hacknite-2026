@@ -30,6 +30,7 @@ function VectorGlyph({
   const screen=useMemo(()=>new THREE.Vector3(),[]);
   const extent=useMemo(()=>new THREE.Vector3(),[]);
   const labelHolder = useRef<THREE.Group>(null);
+  const hovered=useRef(false);
   const [shownMagnitude, setShownMagnitude] = useState(0);
   const direction = useMemo(() => new THREE.Vector3(), []);
   const shownAt = useRef(-1);
@@ -76,7 +77,7 @@ function VectorGlyph({
       const depth=-extent.z;
       labelHolder.current.scale.setScalar(captionWorldScale(depth,(camera as THREE.PerspectiveCamera).fov,viewport.height,.18));
       screen.project(camera);
-      labelHolder.current.visible=depth>camera.near && screen.z<=1 && Math.abs(screen.x)<=1.05 && Math.abs(screen.y)<=1.05;
+      labelHolder.current.visible=hovered.current && depth>camera.near && screen.z<=1 && Math.abs(screen.x)<=1.05 && Math.abs(screen.y)<=1.05;
       if(!labelHolder.current.visible)return;
       const {half,height}=captionBox(`${vector.label || vector.kind} ${captionMagnitude(magnitude)}`,viewport.width,viewport.height,.18);
       const boxes=layout?.current || [];
@@ -96,7 +97,7 @@ function VectorGlyph({
   });
 
   return (
-    <group ref={holder}>
+    <group ref={holder} onPointerOver={e=>{e.stopPropagation();hovered.current=true;}} onPointerOut={()=>{hovered.current=false;}} onClick={e=>{e.stopPropagation();hovered.current=true;}}>
       <primitive object={arrow} />
       <group ref={labelHolder}><Billboard>
         <Text renderOrder={1001} material-depthTest={false} material-depthWrite={false} font="/fonts/chalk-mono.ttf" fontSize={0.18} maxWidth={3} color="#101D33" outlineWidth={0.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{`${vector.label || vector.kind} ${captionMagnitude(shownMagnitude)}`}</Text>

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { SceneScript } from "@/lib/schema";
 import { compileScene } from "@/lib/expressions";
 import {sceneFrame} from "@/lib/scene-framing";
+import {motionPresentation} from "@/lib/motion-presentation";
 import Connectors from "./Connectors";
 import SceneObjects, { type CompiledSceneApi, type SampleRef, type TimeRef } from "./SceneObjects";
 import Vectors from "./Vectors";
@@ -253,12 +254,13 @@ export default function SceneCanvas({
   restart = 0,
 }: SceneCanvasProps) {
   const [supported, setSupported] = useState<boolean | null>(null);
-  const compiled = useMemo(() => compileScene(scene), [scene]);
   const sceneValues = useMemo(() => Object.fromEntries(scene.variables.map((variable) => {
     const candidate = values[variable.name];
     const value = Number.isFinite(candidate) && candidate >= variable.min && candidate <= variable.max ? candidate : variable.value;
     return [variable.name, value];
   })), [scene, values]);
+  const presentation=useMemo(()=>motionPresentation(scene,sceneValues),[scene,sceneValues]);
+  const compiled=useMemo(()=>compileScene(presentation.scene),[presentation]);
   const sampleRef = useRef<null>(null) as SampleRef;
   const labelBoxes=useRef<LabelBox[]>([]);
   const timeRef = useRef(0) as TimeRef;
@@ -277,6 +279,7 @@ export default function SceneCanvas({
 
   return (
     <BoardBoundary key={scene.title}>
+      {presentation.rate<1 ? <span role="note" style={{position:"absolute",top:40,left:18,zIndex:2,fontSize:12,color:"#46566b",pointerEvents:"none"}}>Motion display slowed {Math.round(1/presentation.rate)}× · actual frequency {presentation.frequencyHz.toFixed(1)} Hz</span> : null}
       <Canvas
         shadows
         dpr={[1, 1.75]}
@@ -343,7 +346,8 @@ export default function SceneCanvas({
         </mesh>
         <LabelLayout.Provider value={labelBoxes}>
         <SceneObjects
-          scene={scene}
+          scene={presentation.scene}
+          pointIds={presentation.pointIds}
           compiled={compiled}
           values={sceneValues}
           sampleRef={sampleRef}

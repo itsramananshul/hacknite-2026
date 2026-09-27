@@ -6,6 +6,7 @@ import { useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import {LabelLayout,type LabelBox} from "./LabelLayout";
 import {placeLabel} from "@/lib/label-layout";
 import {captionWorldScale,captionBox} from "@/lib/caption-size";
+import {captionObjectIds} from "@/lib/motion-presentation";
 import * as THREE from "three";
 import { compileScene } from "@/lib/expressions";
 import type { SceneObject, SceneScript } from "@/lib/schema";
@@ -143,7 +144,7 @@ function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: Samp
   );
 }
 
-function ObjectLabels({scene,sampleRef,timeRef}:{scene:SceneScript;sampleRef:SampleRef;timeRef:TimeRef}) {
+function ObjectLabels({scene,sampleRef,timeRef,pointIds,hovered}:{scene:SceneScript;sampleRef:SampleRef;timeRef:TimeRef;pointIds:readonly string[];hovered:React.MutableRefObject<string|null>}) {
   const layout=useContext(LabelLayout);
   const camera=useThree(state=>state.camera);
   const viewport=useThree(state=>state.size);
@@ -154,14 +155,14 @@ function ObjectLabels({scene,sampleRef,timeRef}:{scene:SceneScript;sampleRef:Sam
   useFrame(()=>{
     const placed:LabelBox[]=[];
     const active=scene.steps.find(step=>timeRef.current>=step.tStart && timeRef.current<step.tEnd) || scene.steps.at(-1);
-    const repeatedMarkers=scene.objects.filter(o=>/^(marker|tracer) \d+$/i.test(o.label));
     const focus=new Set(active?.focus||[]);
+    const captions=captionObjectIds(scene,[...focus]);
     if(layout) layout.current=placed;
     for(const object of scene.objects) {
       const holder=holders.current[object.id];
       const frame=sampleRef.current?.objects.find(o=>o.id===object.id);
       if(!holder || !frame) continue;
-      holder.visible=frame.visible && (repeatedMarkers.length<4 || !/^(marker|tracer) \d+$/i.test(object.label) || focus.has(object.id));
+      holder.visible=frame.visible && captions.has(object.id) && hovered.current===object.id;
       if(!holder.visible) continue;
       origin.fromArray(frame.position);
       anchor.copy(origin).y+=labelHeight(object)*(frame.scale?.[1] ?? 1);
@@ -318,6 +319,7 @@ export default function SceneObjects({
   sampleRef,
   timeRef,
   highlighted,
+  pointIds=[],
 }: {
   scene: SceneScript;
   compiled: CompiledSceneApi;
@@ -325,13 +327,15 @@ export default function SceneObjects({
   sampleRef: SampleRef;
   timeRef: TimeRef;
   highlighted: string[];
+  pointIds?:readonly string[];
 }) {
   const lit = useMemo(() => new Set(highlighted), [highlighted]);
+  const hovered=useRef<string|null>(null);
   return (
     <group>
-      <ObjectLabels scene={scene} sampleRef={sampleRef} timeRef={timeRef} />
+      <ObjectLabels scene={scene} sampleRef={sampleRef} timeRef={timeRef} pointIds={pointIds} hovered={hovered} />
       {scene.objects.map((object) => (
-        <Body key={object.id} object={object} sampleRef={sampleRef} lit={lit.has(object.id)} />
+        <group key={object.id} onPointerOver={e=>{e.stopPropagation();hovered.current=object.id;}} onPointerOut={()=>{if(hovered.current===object.id)hovered.current=null;}} onClick={e=>{e.stopPropagation();hovered.current=object.id;}}><Body object={object} sampleRef={sampleRef} lit={lit.has(object.id)} /></group>
       ))}
       {scene.objects
         .filter((object) => object.trail)

@@ -7,6 +7,7 @@ import { compileScene } from "./expressions";
 import { validateSceneScript } from "./validate";
 import { RouteError } from "./gemini";
 import { equationLatex } from "./equations";
+import {motionPresentation} from "./motion-presentation";
 
 const root = join(process.cwd(), ".chalk-work", "videos");
 const identifier = /^[a-f0-9-]{36}$/;
@@ -19,7 +20,8 @@ export function videoDirectory(id:string) {
 
 export function videoPayload(raw:unknown, values:Record<string,number> = {}, solution = "") {
   const scene=validateSceneScript(raw).scene;
-  const compiled=compileScene(scene);
+  const presentation=motionPresentation(scene,values);
+  const compiled=compileScene(presentation.scene);
   const allowed=new Set(scene.variables.map(v=>v.name));
   for(const [name,value] of Object.entries(values)) {
     const variable=scene.variables.find(v=>v.name===name);
@@ -36,7 +38,7 @@ export function videoPayload(raw:unknown, values:Record<string,number> = {}, sol
   if(steps.reduce((sum,s)=>sum+s.narration.length,0)>9000) {
     throw new RouteError(422,"video_too_long","This explanation is too long for one local video. Use a shorter problem or fewer explanation steps.");
   }
-  return {scene:{...scene,steps:steps.map(step=>({...step,equations:step.equations.map(equationLatex)}))},frames,answers,values,solution};
+  return {scene:{...presentation.scene,steps:steps.map(step=>({...step,equations:step.equations.map(equationLatex)}))},pointIds:presentation.pointIds,motionPresentation:{rate:presentation.rate,frequencyHz:presentation.frequencyHz},frames,answers,values,solution};
 }
 
 export async function startVideo(raw:unknown,values:Record<string,number>,solution:string,ownerId?:string) {
@@ -69,7 +71,13 @@ export async function startVideo(raw:unknown,values:Record<string,number>,soluti
     void finish("The video took longer than 10 minutes to render. Try a shorter explanation.");
   },600_000);
   child.on("error",error=>void finish(error.message));
-  child.on("close",code=>void finish(code===0 ? undefined : `Video rendering failed. ${detail.slice(-700)}`));
+  child.on("close",async code=>{
+    if(code===0){await finish();return;}
+    // Keep the renderer's actionable error; Python tracebacks belong in local logs.
+    const status=await videoStatus(id).catch(()=>null);
+    await finish(status?.status==="error" ? status.message : "Video rendering failed. Please retry the explanation video.");
+    if(detail)await writeFile(join(directory,"render-error.log"),detail);
+  });
   return {id,status:"rendering"};
 }
 

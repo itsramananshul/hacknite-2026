@@ -67,6 +67,10 @@ class Explanation(Scene):
         self.camera.background_color = GREEN
         brand = Text("Chalk", font="Segoe Print", font_size=25, color=MINT).to_corner(UP + LEFT, buff=0.3)
         self.add(brand)
+        motion=payload.get("motionPresentation",{})
+        if motion.get("rate",1)<1:
+            notice=Text(f"Motion display slowed {1/motion['rate']:.0f}x; actual frequency {motion['frequencyHz']:.1f} Hz",font="Arial",font_size=12,color=MINT).to_corner(DOWN+LEFT,buff=.3)
+            self.add(notice)
         title = paragraph(scene["title"], width=45, size=37).move_to([0, 2.3, 0])
         if title.height > 1: title.scale_to_fit_height(1)
         problem = paragraph(scene["problemText"], width=76, size=25).move_to([0, 0.4, 0])
@@ -175,13 +179,22 @@ class Explanation(Scene):
             placed=[]
             active=next((step for step in scene["steps"] if step["tStart"]<=t<step["tEnd"]),scene["steps"][-1])
             focus=set(active.get("focus",[]))
+            focused_points=[o["id"] for o in scene["objects"] if o["id"] in payload.get("pointIds",[]) and o["id"] in focus]
+            if len(focused_points)>3:
+                focused_points=[focused_points[0],focused_points[len(focused_points)//2],focused_points[-1]]
+            point_focus=set(focused_points)
             repeated=sum(bool(re.match(r"^(marker|tracer) \d+$",obj["label"],re.I)) for obj in scene["objects"])
+            named=set()
             order=sorted(range(len(pieces)),key=lambda index: scene["objects"][index]["id"] not in focus)
             for index in order:
                 body,label=pieces[index]
                 obj=scene["objects"][index]
                 if not len(label) or not frames[a]["objects"][index]["visible"]:
                     continue
+                if obj["label"] in named or (obj["id"] in payload.get("pointIds",[]) and obj["id"] not in point_focus) or (focus and obj["id"] not in focus):
+                    label.set_opacity(0)
+                    continue
+                named.add(obj["label"])
                 if repeated>=4 and re.match(r"^(marker|tracer) \d+$",obj["label"],re.I) and obj["id"] not in focus:
                     label.set_opacity(0)
                     continue
@@ -230,11 +243,18 @@ class Explanation(Scene):
         if file.exists(): self.add_sound(str(file))
 
 try:
+    segments=[scene["problemText"]]+[step["narration"] for step in scene["steps"]]+["The calculated answers are. "+" ".join(f"{answer['question']}: {value:.3f} {answer['unit']}." for answer,value in zip(scene["answers"],payload["answers"]))]
+    # Windows PowerShell rejects dictionaries with case-distinct physics symbols m/M.
+    # Speech receives strings only; the complete case-sensitive payload stays in Python.
+    (directory/"narration.json").write_text(json.dumps(segments,ensure_ascii=False),encoding="utf-8")
     narration=False
     if os.name=="nt":
         voice_script=Path(__file__).with_name("narrate-video.ps1")
         result=subprocess.run(["powershell.exe","-NoProfile","-File",str(voice_script),"-Directory",str(directory)],capture_output=True,text=True,timeout=120)
-        narration=result.returncode==0 and (directory/"voice-0.wav").exists()
+        narration=result.returncode==0 and all((directory/f"voice-{i}.wav").exists() for i in range(len(segments)))
+        if not narration:
+            (directory/"narration-error.log").write_text(result.stderr[-4000:],encoding="utf-8")
+            raise RuntimeError("Narration could not be generated. Please retry the video; the speech error was recorded locally.")
     status(status="rendering",message="Narration ready. Rendering video frames." if narration else "Rendering video frames with written explanations.")
     with tempconfig({"media_dir":str(directory/"media"),"output_file":"explanation","pixel_width":1280,"pixel_height":720,"frame_rate":24,"disable_caching":True,"verbosity":"WARNING"}):
         movie=Explanation()
