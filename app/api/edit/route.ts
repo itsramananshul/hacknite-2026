@@ -1,3 +1,4 @@
+import {requireUser} from "@/lib/request-auth";
 // POST /api/edit: one change to a scene that is already on the board.
 //
 // The change goes through the same two calls as a solve, so the scene and the
@@ -12,6 +13,7 @@ export const maxDuration = 180;
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const {user}=await requireUser(request);
     const body = await readRequestJson(request);
     const { scene, instruction } = parseEditRequest(body);
     return Response.json(await editProblem(scene, instruction));

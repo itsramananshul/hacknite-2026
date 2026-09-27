@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 import wave
+from video_layout import place_caption
 
 from manim import (Scene, Text, MathTex, VGroup, Circle, Rectangle, Line, Arrow,
                    FadeIn, FadeOut, Write, Create, ValueTracker, always_redraw,
@@ -67,7 +68,9 @@ class Explanation(Scene):
         brand = Text("Chalk", font="Segoe Print", font_size=25, color=MINT).to_corner(UP + LEFT, buff=0.3)
         self.add(brand)
         title = paragraph(scene["title"], width=45, size=37).move_to([0, 2.3, 0])
+        if title.height > 1: title.scale_to_fit_height(1)
         problem = paragraph(scene["problemText"], width=76, size=25).move_to([0, 0.4, 0])
+        if problem.height > 3.4: problem.scale_to_fit_height(3.4)
         footer = Text("Understand the solution, then explore the simulation",font="Arial",font_size=18,color=MINT).move_to([0,-2.8,0])
         self.play(Write(title), FadeIn(problem), FadeIn(footer), run_time=1)
         self.voice(0)
@@ -80,6 +83,8 @@ class Explanation(Scene):
         projected[:, :, 1] += 0.15 * positions[:, :, 2]
         extents=np.array([[obj["size"]["radius"] if obj["shape"] in ("sphere","planet","pendulumBob","pulley") else obj["size"]["x"]/2,
                            obj["size"]["radius"] if obj["shape"] in ("sphere","planet","pendulumBob","pulley") else (0 if obj["shape"]=="plane" else obj["size"]["y"]/2)] for obj in scene["objects"]])
+        frame_scales=np.array([[o.get("scale",[1,1,1])[:2] for o in frame["objects"]] for frame in frames])
+        extents=extents*frame_scales
         lower = (projected-extents).min(axis=(0,1)) if projected.size else np.array([-1,-1])
         upper = (projected+extents).max(axis=(0,1)) if projected.size else np.array([1,1])
         span = np.maximum(upper-lower, 2)
@@ -92,10 +97,14 @@ class Explanation(Scene):
             return np.array([(xy[0]-middle[0])*scale-3.6, (xy[1]-middle[1])*scale+0.2,0])
 
         pieces=[]
+        body_dimensions=[]
+        body_angles=[]
         for obj in scene["objects"]:
             color=obj["color"] if re.fullmatch(r"#[0-9a-fA-F]{6}",obj["color"]) else MINT
             size=obj["size"]
-            if obj["shape"] == "plane":
+            if obj["id"] == "orbitPlane":
+                body=Circle(radius=max(.05,size["radius"]*scale),color=color,fill_opacity=0)
+            elif obj["shape"] == "plane":
                 body=Line([-min(2,size["x"]*scale/2),0,0],[min(2,size["x"]*scale/2),0,0],color=color)
             elif obj["shape"] == "capacitor":
                 body=VGroup(Line([-.4,0,0],[-.1,0,0],color=color),Line([.1,0,0],[.4,0,0],color=color),Line([-.1,-.25,0],[-.1,.25,0],color=color),Line([.1,-.25,0],[.1,.25,0],color=color))
@@ -111,6 +120,8 @@ class Explanation(Scene):
             if label.width>2: label.scale_to_fit_width(2)
             if obj["label"]: label.add_background_rectangle(color=GREEN,opacity=.95,buff=.05)
             pieces.append((body,label))
+            body_dimensions.append((body.width,body.height))
+            body_angles.append(0)
         connections=[(connector,VMobject(color=CREAM,stroke_width=2)) for connector in scene["connectors"]]
 
         def update_diagram(group):
@@ -123,6 +134,14 @@ class Explanation(Scene):
                 first = frames[a]["objects"][index]
                 position = (1-blend)*np.array(first["position"])+blend*np.array(frames[b]["objects"][index]["position"])
                 body,label=pieces[index]
+                factors=(1-blend)*np.array(first.get("scale",[1,1,1]))+blend*np.array(frames[b]["objects"][index].get("scale",[1,1,1]))
+                original_width,original_height=body_dimensions[index]
+                body.rotate(-body_angles[index])
+                if original_width>0: body.stretch_to_fit_width(max(.00001,original_width*factors[0]))
+                if original_height>0: body.stretch_to_fit_height(max(.00001,original_height*factors[1]))
+                angle=(1-blend)*first["rotation"][2]+blend*frames[b]["objects"][index]["rotation"][2]
+                body.rotate(angle)
+                body_angles[index]=angle
                 body.set_opacity(1 if first["visible"] else 0)
                 label.set_opacity(1 if first["visible"] else 0)
                 body.move_to(point(position))
@@ -154,21 +173,21 @@ class Explanation(Scene):
 
             # Keep object captions inside the diagram, below the step heading.
             placed=[]
-            for body,label in pieces:
-                if not len(label) or label.get_opacity() == 0:
+            active=next((step for step in scene["steps"] if step["tStart"]<=t<step["tEnd"]),scene["steps"][-1])
+            focus=set(active.get("focus",[]))
+            repeated=sum(bool(re.match(r"^(marker|tracer) \d+$",obj["label"],re.I)) for obj in scene["objects"])
+            order=sorted(range(len(pieces)),key=lambda index: scene["objects"][index]["id"] not in focus)
+            for index in order:
+                body,label=pieces[index]
+                obj=scene["objects"][index]
+                if not len(label) or not frames[a]["objects"][index]["visible"]:
                     continue
-                label.shift([min(0,-.75-label.get_right()[0])+max(0,-6.65-label.get_left()[0]),0,0])
-                if label.get_top()[1] > 2.05:
-                    label.shift([0,2.05-label.get_top()[1],0])
-                for _ in range(len(pieces)+1):
-                    overlap=next((other for other in placed if
-                        label.get_left()[0]<other.get_right()[0]+.12 and
-                        label.get_right()[0]>other.get_left()[0]-.12 and
-                        label.get_bottom()[1]<other.get_top()[1]+.10 and
-                        label.get_top()[1]>other.get_bottom()[1]-.10),None)
-                    if overlap is None: break
-                    label.shift([0,overlap.get_bottom()[1]-.12-label.get_top()[1],0])
-                placed.append(label)
+                if repeated>=4 and re.match(r"^(marker|tracer) \d+$",obj["label"],re.I) and obj["id"] not in focus:
+                    label.set_opacity(0)
+                    continue
+                slot=place_caption(label.get_center()[0],label.get_center()[1],label.width,label.height,placed)
+                if slot is None: label.set_opacity(0)
+                else: label.move_to([slot[0],slot[1],0])
 
         # Captions render above every body, so a nearby body cannot hide them.
         drawing=VGroup(*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
@@ -179,10 +198,11 @@ class Explanation(Scene):
         for index,step in enumerate(scene["steps"]):
             status(status="rendering",message=f"Rendering explanation step {index+1} of {len(scene['steps'])}.")
             heading=paragraph(f"{index+1}. {step['title']}",width=55,size=28).move_to([0,2.75,0])
+            if heading.height > .75: heading.scale_to_fit_height(.75)
             # Narration is spoken in full; the concise card complements it.
             card=paragraph(step["narration"],width=44,size=20,max_width=5.8)
-            if card.height>2.4: card.scale_to_fit_height(2.4)
-            card.move_to([3.0,1.0,0])
+            if card.height>1.65: card.scale_to_fit_height(1.65)
+            card.move_to([3.0,1.15,0])
             formulas=VGroup(*[equation(e) for e in step["equations"][:4]])
             if len(formulas):
                 formulas.arrange(DOWN,buff=.22)

@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {LabelLayout} from "./LabelLayout";
 import {placeLabel} from "@/lib/label-layout";
+import {captionWorldScale,captionBox,captionMagnitude} from "@/lib/caption-size";
 import * as THREE from "three";
 import type { SceneVector } from "@/lib/schema";
 import type { SampleRef, TimeRef } from "./SceneObjects";
@@ -12,7 +13,6 @@ import type { SampleRef, TimeRef } from "./SceneObjects";
 const SCALE = 0.32;
 const MAX_LENGTH = 3.2;
 const LABEL_SECONDS = 0.12;
-const LABEL_DRIFT = 0.005;
 
 function VectorGlyph({
   vector,
@@ -25,10 +25,10 @@ function VectorGlyph({
 }) {
   const holder = useRef<THREE.Group>(null);
   const camera=useThree(state=>state.camera);
+  const viewport=useThree(state=>state.size);
   const layout=useContext(LabelLayout);
   const screen=useMemo(()=>new THREE.Vector3(),[]);
   const extent=useMemo(()=>new THREE.Vector3(),[]);
-  const basis=useMemo(()=>new THREE.Vector3(),[]);
   const labelHolder = useRef<THREE.Group>(null);
   const [shownMagnitude, setShownMagnitude] = useState(0);
   const direction = useMemo(() => new THREE.Vector3(), []);
@@ -44,7 +44,7 @@ function VectorGlyph({
         0.2,
         0.12,
       ),
-    [vector.color],
+    [vector.color, vector.kind],
   );
 
   useEffect(() => () => arrow.dispose(), [arrow]);
@@ -72,20 +72,23 @@ function VectorGlyph({
       labelHolder.current.position.y += 0.2;
       // Vector captions share the object-caption collision layout.
       screen.copy(labelHolder.current.position).add(group.position);
-      extent.copy(screen).addScaledVector(basis.setFromMatrixColumn(camera.matrixWorld,0),Math.min(3,(`${vector.label || vector.kind} ${magnitude.toFixed(2)}`).length*.11)/2).project(camera);
+      extent.copy(screen).applyMatrix4(camera.matrixWorldInverse);
+      const depth=-extent.z;
+      labelHolder.current.scale.setScalar(captionWorldScale(depth,(camera as THREE.PerspectiveCamera).fov,viewport.height,.18));
       screen.project(camera);
-      const half=Math.abs(extent.x-screen.x)+.025;
-      extent.copy(labelHolder.current.position).add(group.position).addScaledVector(basis.setFromMatrixColumn(camera.matrixWorld,1),.24).project(camera);
-      const height=Math.abs(extent.y-screen.y)+.025;
+      labelHolder.current.visible=depth>camera.near && screen.z<=1 && Math.abs(screen.x)<=1.05 && Math.abs(screen.y)<=1.05;
+      if(!labelHolder.current.visible)return;
+      const {half,height}=captionBox(`${vector.label || vector.kind} ${captionMagnitude(magnitude)}`,viewport.width,viewport.height,.18);
       const boxes=layout?.current || [];
       const position=placeLabel(screen.x,screen.y,half,height,boxes);
+      labelHolder.current.visible=position.visible;
       screen.x=position.x;screen.y=position.y;
       labelHolder.current.position.copy(screen.unproject(camera)).sub(group.position);
     }
-    const now = timeRef.current;
-    const drifted = Math.abs(magnitude - shownValue.current) > LABEL_DRIFT;
+    const now = performance.now()/1000;
+    const drifted = captionMagnitude(magnitude)!==captionMagnitude(shownValue.current);
     const due = now - shownAt.current > LABEL_SECONDS;
-    if (drifted || due) {
+    if (drifted && due) {
       setShownMagnitude(magnitude);
       shownAt.current = now;
       shownValue.current = magnitude;
@@ -96,7 +99,7 @@ function VectorGlyph({
     <group ref={holder}>
       <primitive object={arrow} />
       <group ref={labelHolder}><Billboard>
-        <Text font="/fonts/chalk-mono.ttf" fontSize={0.18} maxWidth={3} color="#101D33" outlineWidth={0.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{`${vector.label || vector.kind} ${shownMagnitude.toFixed(2)}`}</Text>
+        <Text renderOrder={1001} material-depthTest={false} material-depthWrite={false} font="/fonts/chalk-mono.ttf" fontSize={0.18} maxWidth={3} color="#101D33" outlineWidth={0.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{`${vector.label || vector.kind} ${captionMagnitude(shownMagnitude)}`}</Text>
       </Billboard></group>
     </group>
   );

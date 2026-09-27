@@ -1,8 +1,8 @@
 "use client";
 import {useState} from "react";
 import type {Library,Subject} from "@/lib/notebooks";
-export default function NotebookLibrary({library,activeId,onSelect,onRename,onCreate,onOpen}: {
-  library:Library; activeId:string; onSelect:(id:string)=>void; onRename:(id:string,name:string)=>void;
+export default function NotebookLibrary({library,activeId,cloud=false,onSelect,onRename,onCreate,onOpen}: {
+  library:Library; activeId:string; cloud?:boolean; onSelect:(id:string)=>void; onRename:(id:string,name:string)=>void;
   onCreate:(name:string,subject:Subject)=>void; onOpen:(id:string)=>void;
 }) {
   const active=library.notebooks.find(n=>n.id===activeId) ?? library.notebooks[0];

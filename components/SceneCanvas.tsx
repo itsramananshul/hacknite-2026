@@ -6,6 +6,7 @@ import { Component, type ErrorInfo, type ReactNode, useEffect, useMemo, useRef, 
 import * as THREE from "three";
 import type { SceneScript } from "@/lib/schema";
 import { compileScene } from "@/lib/expressions";
+import {sceneFrame} from "@/lib/scene-framing";
 import Connectors from "./Connectors";
 import SceneObjects, { type CompiledSceneApi, type SampleRef, type TimeRef } from "./SceneObjects";
 import Vectors from "./Vectors";
@@ -40,6 +41,23 @@ export interface SceneCanvasProps {
 
 const FRAME_GAP_CAP = 0.1;
 const REPORT_SECONDS = 0.1;
+
+function FrameScene({scene,values,shot}:{scene:SceneScript;values:Record<string,number>;shot:Shot|null}) {
+  const camera=useThree(state=>state.camera);
+  const size=useThree(state=>state.size);
+  const controls=useThree(state=>state.controls) as {target:THREE.Vector3;update:()=>void;maxDistance:number}|null;
+  useEffect(()=>{
+    if(shot)return;
+    const frame=sceneFrame(scene,values,size.width/Math.max(1,size.height));
+    if(!frame)return;
+    camera.position.fromArray(frame.position);
+    camera.far=Math.max(800,frame.distance+frame.radius*4);
+    camera.updateProjectionMatrix();
+    if(controls){controls.target.fromArray(frame.target);controls.maxDistance=Math.max(90,frame.distance*3);controls.update();}
+    else camera.lookAt(new THREE.Vector3(...frame.target));
+  },[scene,values,size.width,size.height,camera,controls,shot]);
+  return null;
+}
 
 function webglSupported(): boolean {
   try {
@@ -306,7 +324,7 @@ export default function SceneCanvas({
         <directionalLight position={[-10, 7, -12]} intensity={0.32} color="#a3e0c0" />
         {scene.world.showGrid ? (
           <Grid
-            position={[0, scene.world.groundY, 0]}
+            position={[0, scene.world.groundY + 0.015, 0]}
             args={[160, 160]}
             cellSize={1}
             cellThickness={0.5}
@@ -345,6 +363,7 @@ export default function SceneCanvas({
           maxPolarAngle={Math.PI / 2 - 0.02}
           onStart={onManualOrbit}
         />
+        <FrameScene scene={scene} values={sceneValues} shot={shot} />
       </Canvas>
     </BoardBoundary>
   );

@@ -613,6 +613,10 @@ function solvePromptText(request: PipelineRequest): string {
       "The variables on the board right now, with their current values:",
       variableBlock(request.currentScene),
       "",
+      "This is an edit of an existing numerical simulation, not a new conceptual question. Recalculate each of these original answer questions using the changed parameters, even if the recorded problem text contains no explicit question:",
+      ...(request.currentScene?.answers ?? []).map(answer=>`- ${answer.question}; formula: ${answer.expression}; unit: ${answer.unit}`),
+      "Interpret informal references to the visible support (for example 'ramp taller' on a cliff-launch scene) as a change to its matching height parameter. Explain your interpretation. Preserve the original answer questions and units.",
+      "",
       "Apply that change to the physics and solve the whole problem again from the start with the new values. The expressions you return are the ones the new scene has to reproduce, so do not keep an expression that the change invalidates.",
     ].join("\n");
   }

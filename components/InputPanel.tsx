@@ -1,4 +1,5 @@
 "use client";
+import {authFetch} from "@/lib/auth-fetch";
 
 // The only place a problem enters Chalk. The reader types it, picks a photo,
 // or holds a book page up to the camera, and this panel hands the text and one
@@ -206,7 +207,7 @@ export default function InputPanel({ initialProblemText = "", subject = "physics
       controller.abort();
     }, REQUEST_TIMEOUT_MS);
     try {
-      const response = await fetch("/api/solve", {
+      const response = await authFetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept":"application/x-ndjson" },
         body: JSON.stringify({ problemText: text || undefined, image: image ?? undefined, subject }),

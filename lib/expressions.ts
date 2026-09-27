@@ -43,6 +43,7 @@ export interface SceneSampleObject {
   id: string;
   position: [number, number, number];
   rotation: [number, number, number];
+  scale?: [number, number, number];
   visible: boolean;
 }
 
@@ -302,6 +303,7 @@ export function compileScene(input: SceneScript): CompiledScene {
     id: object.id,
     position: compilePoint(object.position, variableNames, `object "${object.id}" position`),
     rotation: compilePoint(object.rotation, variableNames, `object "${object.id}" rotation`),
+    scale: object.scale ? compilePoint(object.scale, variableNames, `object "${object.id}" scale`) : null,
     visible: compileExpression(object.visible, variableNames),
   }));
   const vectors = scene.vectors.map((vector) => ({
@@ -366,6 +368,11 @@ export function compileScene(input: SceneScript): CompiledScene {
           requireNumber(object.rotation.z.evaluate(scope), `object "${object.id}" rotation.z`),
         ],
         visible: requireVisible(object.visible.evaluate(scope), `object "${object.id}" visible`),
+        ...(object.scale ? {scale: [
+          requireNumber(object.scale.x.evaluate(scope), `object "${object.id}" scale.x`),
+          requireNumber(object.scale.y.evaluate(scope), `object "${object.id}" scale.y`),
+          requireNumber(object.scale.z.evaluate(scope), `object "${object.id}" scale.z`),
+        ] as [number,number,number]} : {}),
       }));
       const sampledVectors: SceneSampleVector[] = vectors.map((vector) => {
         const components: [number, number, number] = [

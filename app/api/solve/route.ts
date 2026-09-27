@@ -1,3 +1,4 @@
+import {requireUser} from "@/lib/request-auth";
 // POST /api/solve: the whole server side pipeline for one problem.
 //
 // Call A solves the problem with the code execution tool, Call B turns that
@@ -13,6 +14,7 @@ export const maxDuration = 180;
 
 export async function POST(request: Request): Promise<Response> {
   try {
+    const {user}=await requireUser(request);
     const body = await readRequestJson(request);
     const parsed=parseSolveRequest(body);
     if(request.headers.get("accept")?.includes("application/x-ndjson")) {

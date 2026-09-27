@@ -5,6 +5,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import {LabelLayout,type LabelBox} from "./LabelLayout";
 import {placeLabel} from "@/lib/label-layout";
+import {captionWorldScale,captionBox} from "@/lib/caption-size";
 import * as THREE from "three";
 import { compileScene } from "@/lib/expressions";
 import type { SceneObject, SceneScript } from "@/lib/schema";
@@ -42,9 +43,12 @@ function liesFlatByDefault(object: SceneObject): boolean {
 
 function Shape({ object, lit }: { object: SceneObject; lit: boolean }) {
   const size = readSize(object);
+  // The orbital reference plane is an outline, not an opaque disk cutting
+  // through the planet. Its XY orientation matches the satellite trajectory.
+  if(object.id==="orbitPlane")return <mesh><ringGeometry args={[Math.max(.01,size.radius-.025),size.radius+.025,96]} /><meshBasicMaterial color={object.color} side={THREE.DoubleSide} /></mesh>;
   const material = (
     <meshStandardMaterial
-      color={object.shape === "plane" && /ground|floor|landing|base/i.test(object.id) ? "#D0D6DC" : object.color}
+      color={/^(ground|floor|base)$/i.test(object.id) ? "#D0D6DC" : object.color}
       roughness={0.6}
       metalness={0.08}
       emissive={lit ? "#a3e0c0" : "#000000"}
@@ -129,6 +133,7 @@ function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: Samp
     node.visible = frame.visible;
     node.position.set(frame.position[0], frame.position[1], frame.position[2]);
     node.rotation.set(frame.rotation[0], frame.rotation[1], frame.rotation[2]);
+    node.scale.set(...(frame.scale ?? [1,1,1] as [number,number,number]));
   });
 
   return (
@@ -141,49 +146,40 @@ function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: Samp
 function ObjectLabels({scene,sampleRef,timeRef}:{scene:SceneScript;sampleRef:SampleRef;timeRef:TimeRef}) {
   const layout=useContext(LabelLayout);
   const camera=useThree(state=>state.camera);
+  const viewport=useThree(state=>state.size);
   const holders=useRef<Record<string,THREE.Group|null>>({});
-  const leaders=useRef<Record<string,LineHandle|null>>({});
   const origin=useMemo(()=>new THREE.Vector3(),[]);
-  const linePoints=useMemo(()=>new Float32Array(6),[]);
   const anchor=useMemo(()=>new THREE.Vector3(),[]);
   const extent=useMemo(()=>new THREE.Vector3(),[]);
-  const right=useMemo(()=>new THREE.Vector3(),[]);
-  const up=useMemo(()=>new THREE.Vector3(),[]);
   useFrame(()=>{
     const placed:LabelBox[]=[];
     const active=scene.steps.find(step=>timeRef.current>=step.tStart && timeRef.current<step.tEnd) || scene.steps.at(-1);
-    const repeatedMarkers=scene.objects.filter(o=>/^marker \d+$/i.test(o.label));
+    const repeatedMarkers=scene.objects.filter(o=>/^(marker|tracer) \d+$/i.test(o.label));
     const focus=new Set(active?.focus||[]);
     if(layout) layout.current=placed;
-    right.setFromMatrixColumn(camera.matrixWorld,0);
-    up.setFromMatrixColumn(camera.matrixWorld,1);
     for(const object of scene.objects) {
       const holder=holders.current[object.id];
       const frame=sampleRef.current?.objects.find(o=>o.id===object.id);
       if(!holder || !frame) continue;
-      holder.visible=frame.visible && (repeatedMarkers.length<6 || !/^marker \d+$/i.test(object.label) || focus.has(object.id));
-      const leader=leaders.current[object.id];
-      if(leader) leader.visible=false;
+      holder.visible=frame.visible && (repeatedMarkers.length<4 || !/^(marker|tracer) \d+$/i.test(object.label) || focus.has(object.id));
       if(!holder.visible) continue;
       origin.fromArray(frame.position);
-      anchor.copy(origin).y+=labelHeight(object);
-      extent.copy(anchor).addScaledVector(right,Math.min(3,object.label.length*.13)/2).project(camera);
+      anchor.copy(origin).y+=labelHeight(object)*(frame.scale?.[1] ?? 1);
+      extent.copy(anchor).applyMatrix4(camera.matrixWorldInverse);
+      const depth=-extent.z;
+      holder.scale.setScalar(captionWorldScale(depth,(camera as THREE.PerspectiveCamera).fov,viewport.height,.2));
       anchor.project(camera);
-      const half=Math.abs(extent.x-anchor.x)+.025;
-      extent.fromArray(frame.position).y+=labelHeight(object);
-      extent.addScaledVector(up,.25*Math.max(1,Math.ceil(object.label.length*.13/3))).project(camera);
-      const height=Math.abs(extent.y-anchor.y)+.025;
+      if(depth<=camera.near || anchor.z>1 || anchor.x< -1.05 || anchor.x>1.05 || anchor.y< -1.05 || anchor.y>1.05){holder.visible=false;continue;}
+      const {half,height}=captionBox(object.label,viewport.width,viewport.height);
       const position=placeLabel(anchor.x,anchor.y,half,height,placed);
-      const moved=Math.hypot(position.x-anchor.x,position.y-anchor.y)>.07;
+      holder.visible=position.visible;
       anchor.x=position.x;anchor.y=position.y;
       holder.position.copy(anchor.unproject(camera));
-      if(leader && moved){leader.visible=true;linePoints.set([origin.x,origin.y,origin.z,anchor.x,anchor.y,anchor.z]);leader.geometry.setPositions(linePoints);}
     }
   });
   return <group>{scene.objects.filter(o=>o.label).map(object=><group key={object.id}>
-    <Line ref={node=>{leaders.current[object.id]=node as LineHandle|null;}} points={[[0,0,0],[0,1,0]]} color="#738396" lineWidth={1} transparent opacity={.55} />
     <group ref={node=>{holders.current[object.id]=node;}}>
-    <Billboard><Text font="/fonts/chalk-mono.ttf" fontSize={.2} maxWidth={3} color="#101D33" outlineWidth={.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{object.label}</Text></Billboard>
+    <Billboard><Text renderOrder={1000} material-depthTest={false} material-depthWrite={false} font="/fonts/chalk-mono.ttf" fontSize={.2} maxWidth={3} color="#101D33" outlineWidth={.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{object.label}</Text></Billboard>
   </group></group>)}</group>;
 }
 
@@ -283,6 +279,7 @@ function Trail({
       2,
       Math.min(total, Math.ceil((timeRef.current / Math.max(duration, 0.001)) * total) + 1),
     );
+    line.visible=timeRef.current>0;
     if (count === drawn.current) return;
     drawn.current = count;
     line.geometry.setPositions(count >= total ? source : source.slice(0, count * 3));

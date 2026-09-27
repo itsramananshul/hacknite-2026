@@ -1,10 +1,14 @@
 "use client";
+import {authFetch} from "@/lib/auth-fetch";
 
 import dynamic from "next/dynamic";
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import NotebookLibrary from "@/components/NotebookLibrary";
 import AccountPanel from "@/components/AccountPanel";
+import AuthScreen from "@/components/AuthScreen";
+import {getSupabaseClient} from "@/lib/supabase-client";
+import {accountStorage,loadCloudLibrary,flushCloud,queueNotebooks,queuePage,readPending} from "@/lib/cloud-notebooks";
 import {EMPTY_LIBRARY, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
 import ExplanationVideo from "@/components/ExplanationVideo";
@@ -12,6 +16,7 @@ import StepsPanel, { activeStepIndex } from "@/components/StepsPanel";
 import Timeline from "@/components/Timeline";
 import VariableSliders from "@/components/VariableSliders";
 import { compileScene } from "@/lib/expressions";
+import {localParameterEdit} from "@/lib/local-edit";
 import { presetList, presets, type PresetKey } from "@/lib/presets";
 import type { SceneScript } from "@/lib/schema";
 import { validateSceneScript } from "@/lib/validate";
@@ -109,6 +114,35 @@ function IconVariables() {
 }
 
 export default function Page() {
+  const [accountId,setAccountId] = useState<string|null|undefined>(undefined);
+  const accountRef=useRef<string|null|undefined>(undefined);
+  const [sessionReady,setSessionReady]=useState(false);
+  const [sessionError,setSessionError]=useState("");
+  const [cloudStatus,setCloudStatus]=useState("");
+  const [cloudRetry,setCloudRetry]=useState(0);
+  const cloudBusy=useRef(false);
+  const lastLibrary=useRef<Library>(EMPTY_LIBRARY);
+  useEffect(()=>{
+    const client=getSupabaseClient();
+    if(!client){accountRef.current=null;setAccountId(null);return;}
+    let alive=true,eventReceived=false;
+    const change=(id:string|null)=>{if(!alive || accountRef.current===id)return;accountRef.current=id;setLibraryReady(false);setSessionReady(false);setAccountId(id);};
+    client.auth.getSession().then(({data,error})=>{if(!eventReceived){change(data.session?.user.id ?? null);if(error && alive)setCloudStatus("Could not restore sign-in. Your guest pages remain on this browser.");}});
+    const {data}=client.auth.onAuthStateChange((_event,session)=>{eventReceived=true;change(session?.user.id ?? null);});
+    return()=>{alive=false;data.subscription.unsubscribe();};
+  },[]);
+  useEffect(()=>{
+    let alive=true;
+    const client=getSupabaseClient();if(!client)return;
+    const sync=async()=>{
+      if(!accountId){await fetch("/api/session",{method:"DELETE"});return;}
+      try{const response=await authFetch("/api/session",{method:"POST"});if(!response.ok)throw new Error("Sign-in could not be verified. Please sign out and sign in again.");if(alive){setSessionError("");setSessionReady(true);}}
+      catch(error){if(alive){setSessionReady(false);setSessionError(describe(error,"Sign-in failed."));}}
+    };
+    void sync();
+    const {data}=client.auth.onAuthStateChange(event=>{if(event==="TOKEN_REFRESHED")setTimeout(()=>void sync(),0);});
+    return()=>{alive=false;data.subscription.unsubscribe();};
+  },[accountId]);
   const [library,setLibrary] = useState<Library>(EMPTY_LIBRARY);
   const [notebookId,setNotebookId] = useState("physics");
   const notebookRef = useRef("physics");
@@ -128,83 +162,107 @@ export default function Page() {
   const activeQuestion = useRef<string|null>(null);
   const [restoredInput,setRestoredInput] = useState({version:0,text:""});
   useEffect(()=>{
-    try {
-      const loaded=readLibrary(localStorage);
-      setLibrary(loaded);
-      const selected=localStorage.getItem("chalk-active-notebook");
-      if(selected && loaded.notebooks.some(n=>n.id===selected)){notebookRef.current=selected;setNotebookId(selected);}
-    } catch {setStorageError("Browser storage is unavailable. Pages cannot be saved on this device.");}
-    setLibraryReady(true);
+    if(accountId===undefined)return;
+    let alive=true;
+    const cache=accountStorage(localStorage,accountId);
+    const client=getSupabaseClient();
+    activeQuestion.current=null;
+    setQuestionPage(null);
+    setScene(presets.projectile);
+    setSolution("");setPlaying(false);setProblemOpen(false);
+    setRestoredInput(previous=>({version:previous.version+1,text:""}));
     const restore=()=>{
+      if(!alive)return;
       const id=new URL(window.location.href).searchParams.get("page");
-      if(!id) {
-        if(activeQuestion.current) {
-          activeQuestion.current=null;
-          setQuestionPage(null);
-          setScene(presets.projectile);
-          setSolution("");
-          setPlaying(false);
-          setRestoredInput(previous=>({version:previous.version+1,text:""}));
-        }
-        return;
+      if(!id){
+        activeQuestion.current=null;setQuestionPage(null);setScene(presets.projectile);setSolution("");setPlaying(false);
+        setRestoredInput(previous=>({version:previous.version+1,text:""}));return;
       }
-      if(activeQuestion.current===id) return;
+      if(activeQuestion.current===id)return;
       try {
-        const raw=localStorage.getItem(`chalk-page:${id}`) ?? sessionStorage.getItem(`chalk-page:${id}`);
-        if(!raw) return;
+        const raw=cache.getItem(`chalk-page:${id}`) ?? (accountId===null ? sessionStorage.getItem(`chalk-page:${id}`) : null);
+        if(!raw){setNotice("This page is not available in this account. Open Your notebooks to choose a saved page.");return;}
         const saved=JSON.parse(raw);
-        if(saved.questionPage?.id!==id || typeof saved.questionPage.problemText!=="string") return;
+        if(saved.questionPage?.id!==id || typeof saved.questionPage.problemText!=="string")return;
         const restoredScene=saved.scene ? validateSceneScript(saved.scene).scene : null;
         activeQuestion.current=id;
-        const restoredNotebook=saved.questionPage.notebookId ?? "physics";
-        notebookRef.current=restoredNotebook;
-        setNotebookId(restoredNotebook);
-        pendingValues.current=saved.values ?? null;
-        setLibraryOpen(false);
-        setLeftView("problem");
+        const book=saved.questionPage.notebookId ?? "physics";
+        notebookRef.current=book;setNotebookId(book);pendingValues.current=saved.values ?? null;
+        setLibraryOpen(false);setLeftView("problem");
         setQuestionPage({...saved.questionPage,...(!restoredScene && ["solving","building"].includes(saved.questionPage.status) ? {
           status:"error",error:"This page was reopened before its simulation finished. Submit the problem again to generate it."
         } : {})});
-        setScene(restoredScene);
-        setSolution(typeof saved.solution==="string" ? saved.solution : "");
-        setPlaying(false);
-
-        setPredict(false);
-        setView("simulation");
-        setNotice(null);
-        setEditError(null);
-        setSelected(null);
-        setShareUrl("");
-        setShareStatus("");
+        setScene(restoredScene);setSolution(typeof saved.solution==="string" ? saved.solution : "");setPlaying(false);
+        setPredict(false);setView("simulation");setNotice(null);setEditError(null);setSelected(null);setShareUrl("");setShareStatus("");
         setRestoredInput(previous=>({version:previous.version+1,text:saved.questionPage.problemText}));
-      } catch { /* A missing or invalid saved page never replaces the current scene. */ }
+      } catch {setStorageError("This saved page could not be opened.");}
     };
-    restore();
-    window.addEventListener("popstate",restore);
+    async function load(){
+      let loaded:Library;
+      try{loaded=readLibrary(cache);}catch{loaded=structuredClone(EMPTY_LIBRARY);setStorageError("Browser storage is unavailable. Keep this tab open.");}
+      if(accountId && client){
+        setCloudStatus("Loading your cloud notebooks…");
+        try{loaded=await loadCloudLibrary(client,accountId,cache);if(alive)setCloudStatus("Cloud notebooks connected.");}
+        catch(error){if(alive)setCloudStatus(`Cloud connection failed. Cached pages are available; uploads will retry. ${describe(error,"Try again.")}`);}
+      } else setCloudStatus("Saved on this browser. Sign in to save new pages to your account.");
+      if(!alive)return;
+      lastLibrary.current=loaded;setLibrary(loaded);
+      const selected=cache.getItem("chalk-active-notebook");
+      const book=loaded.notebooks.some(n=>n.id===selected) ? selected! : loaded.notebooks[0].id;
+      notebookRef.current=book;setNotebookId(book);
+      restore();setLibraryReady(true);
+    }
+    void load();
     const syncLibrary=(event:StorageEvent)=>{
-      if(event.key==="chalk-library:v1") {
-        try {setLibrary(readLibrary(localStorage));} catch { /* Keep the current library when storage is unavailable. */ }
-      }
+      const key=accountId ? `chalk-account:${accountId}:chalk-library:v1` : "chalk-library:v1";
+      if(event.key===key){try{const loaded=readLibrary(cache);lastLibrary.current=loaded;setLibrary(loaded);}catch{ /* Current library stays available. */ }}
     };
-    window.addEventListener("storage",syncLibrary);
-    return()=>{window.removeEventListener("popstate",restore);window.removeEventListener("storage",syncLibrary);};
-  },[]);
+    window.addEventListener("popstate",restore);window.addEventListener("storage",syncLibrary);
+    return()=>{alive=false;window.removeEventListener("popstate",restore);window.removeEventListener("storage",syncLibrary);};
+  },[accountId]);
   const [values, setValues] = useState<Record<string, number>>(() => initialValues(presets.projectile));
   useEffect(()=>{
-    if(!libraryReady || !questionPage) return;
+    if(!libraryReady || accountId===undefined || accountRef.current!==accountId || !questionPage) return;
     try {
-      localStorage.setItem(`chalk-page:${questionPage.id}`,JSON.stringify({questionPage,scene,solution,values}));
-      setLibrary(previous=>upsertPage(previous,{id:questionPage.id,notebookId:questionPage.notebookId ?? "physics",
+      const cache=accountStorage(localStorage,accountId);
+      const payload={questionPage,scene,solution,values};
+      cache.setItem(`chalk-page:${questionPage.id}`,JSON.stringify(payload));
+      const entry={id:questionPage.id,notebookId:questionPage.notebookId ?? "physics",
         title:scene?.title ?? (questionPage.problemText.slice(0,120) || "Problem from a photo"),
-        status:questionPage.status,updatedAt:new Date().toISOString()}));
+        status:questionPage.status,updatedAt:new Date().toISOString()};
+      const notebook=library.notebooks.find(n=>n.id===entry.notebookId);
+      if(accountId && notebook)queuePage(cache,entry,payload,notebook);
+      setLibrary(previous=>upsertPage(previous,entry));
       setStorageError(null);
     } catch {setStorageError("This page could not be saved. Browser storage may be full; keep this tab open.");}
-  },[libraryReady,questionPage,scene,solution,values]);
+  },[libraryReady,accountId,questionPage,scene,solution,values]);
   useEffect(()=>{
-    if(!libraryReady) return;
-    try {writeLibrary(localStorage,library);localStorage.setItem("chalk-active-notebook",notebookId);}
+    if(!libraryReady || accountId===undefined || accountRef.current!==accountId) return;
+    try {const cache=accountStorage(localStorage,accountId);
+      if(accountId)queueNotebooks(cache,lastLibrary.current,library);
+      writeLibrary(cache,library);cache.setItem("chalk-active-notebook",notebookId);lastLibrary.current=library;}
     catch {setStorageError("Notebook changes could not be saved in browser storage.");}
-  },[libraryReady,library,notebookId]);
+  },[libraryReady,accountId,library,notebookId]);
+  useEffect(()=>{
+    if(!libraryReady || !accountId)return;
+    const client=getSupabaseClient();if(!client)return;
+    let alive=true;
+    const cache=accountStorage(localStorage,accountId);
+    const timer=window.setTimeout(async()=>{
+      if(cloudBusy.current || accountRef.current!==accountId)return;
+      const pending=readPending(cache);
+      if(!Object.keys(pending.notebooks).length && !Object.keys(pending.pages).length)return;
+      cloudBusy.current=true;setCloudStatus("Saving to your account…");
+      try{await flushCloud(client,accountId,cache,()=>accountRef.current===accountId);
+        if(accountRef.current===accountId){const remaining=readPending(cache);setCloudStatus(Object.keys(remaining.pages).length || Object.keys(remaining.notebooks).length ? "New changes are waiting to upload…" : "Saved to your account.");}}
+      catch(error){if(accountRef.current===accountId)setCloudStatus(`Not uploaded yet. Your changes are saved on this device. ${describe(error,"Connection failed.")}`);}
+      finally{cloudBusy.current=false;}
+    },700);
+    const retry=()=>setCloudRetry(n=>n+1);
+    const interval=window.setInterval(retry,10000);
+    window.addEventListener("online",retry);
+    return()=>{alive=false;window.clearInterval(interval);window.clearTimeout(timer);window.removeEventListener("online",retry);};
+  },[libraryReady,accountId,library,cloudRetry]);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [view, setView] = useState<"simulation" | "video">("simulation");
@@ -446,6 +504,7 @@ export default function Page() {
   }, []);
 
   const handleStarted = useCallback((problemText:string) => {
+    if(!libraryReady)throw new Error("Your notebooks are still loading. Please try again in a moment.");
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
     activeQuestion.current=id;
     setLeftView("problem");
@@ -479,7 +538,7 @@ export default function Page() {
       document.querySelector(".nb-workspace")?.scrollTo({top:0});
     });
     return id;
-  },[]);
+  },[libraryReady]);
 
   const handleAnswers = useCallback((result:Omit<SolveResult,"scene">,id:string)=>{
     if(activeQuestion.current!==id) return;
@@ -516,10 +575,18 @@ export default function Page() {
     setEditBusy(true);
     setEditError(null);
     try {
-      const response = await fetch("/api/edit", {
+      const currentScene={...scene,variables:scene.variables.map(variable=>({...variable,value:values[variable.name] ?? variable.value}))};
+      const immediate=localParameterEdit(currentScene,instruction);
+      if(immediate){
+        const nextValues=initialValues(immediate.scene);
+        setValues(nextValues);setTime(0);sharedClock.current=0;setPlaybackRevision(previous=>previous+1);setPlaying(true);
+        setSolution(immediate.solutionText);setEditText("");setNotice("Updated instantly using the existing equations.");
+        return;
+      }
+      const response = await authFetch("/api/edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene, instruction }),
+        body: JSON.stringify({ scene:{...scene,variables:scene.variables.map(variable=>({...variable,value:values[variable.name] ?? variable.value}))}, instruction }),
       });
       const payload: unknown = await response.json().catch(() => null);
       if (!response.ok) {
@@ -547,7 +614,7 @@ export default function Page() {
     } finally {
       setEditBusy(false);
     }
-  }, [editText, editBusy, scene]);
+  }, [editText, editBusy, scene, values]);
 
   const blurb =
     (questionPage && !live ? questionPage.problemText || "A problem from your photo." : "") ||
@@ -596,6 +663,37 @@ export default function Page() {
       </div>
     ));
 
+  const importGuestPages=()=>{
+    if(!accountId || !libraryReady)return;
+    try{
+      const guest=readLibrary(localStorage);
+      if(!guest.pages.length){setCloudStatus("There are no guest pages to import on this browser.");return;}
+      const cache=accountStorage(localStorage,accountId);
+      const importedBooks=guest.notebooks.map(n=>({...n,id:`import-${n.id}`.slice(0,100)}));
+      let next={...library,notebooks:[...library.notebooks,...importedBooks.filter(n=>!library.notebooks.some(book=>book.id===n.id))]};
+      let count=0;
+      for(const entry of guest.pages){
+        if(next.pages.some(p=>p.id===entry.id))continue;
+        const raw=localStorage.getItem(`chalk-page:${entry.id}`) ?? sessionStorage.getItem(`chalk-page:${entry.id}`);
+        if(!raw)continue;
+        const payload=JSON.parse(raw);
+        if(payload.questionPage?.id!==entry.id)continue;
+        if(payload.scene)validateSceneScript(payload.scene);
+        const notebook=importedBooks.find(n=>n.id===`import-${entry.notebookId}`.slice(0,100));
+        if(!notebook)continue;
+        payload.questionPage.notebookId=notebook.id;
+        const importedEntry={...entry,notebookId:notebook.id,updatedAt:new Date().toISOString()};
+        cache.setItem(`chalk-page:${entry.id}`,JSON.stringify(payload));queuePage(cache,importedEntry,payload,notebook);
+        next=upsertPage(next,importedEntry);count++;
+      }
+      queueNotebooks(cache,library,next);writeLibrary(cache,next);setLibrary(next);
+      setCloudStatus(`${count} pages imported. Saving to your account…`);
+      const id=new URL(window.location.href).searchParams.get("page");
+      if(id && next.pages.some(p=>p.id===id)){activeQuestion.current=null;window.dispatchEvent(new PopStateEvent("popstate"));}
+    }catch(error){setCloudStatus(`Import could not finish. Guest pages remain unchanged. ${describe(error,"Try again.")}`);}
+  };
+
+  if(!accountId || !sessionReady || !libraryReady)return <AuthScreen checking={accountId===undefined} verifying={Boolean(accountId)} error={sessionError} />;
   return (
     <div className="nb-app">
       <header className="nb-header">
@@ -643,8 +741,9 @@ export default function Page() {
 
         <aside className="nb-notebook" aria-label="Notebook">
           {storageError ? <p role="alert" className="nb-notice nb-warn">{storageError}</p> : null}
-          {accountOpen ? <AccountPanel /> : null}
-          {libraryOpen && !accountOpen ? <NotebookLibrary library={library} activeId={notebookId}
+          {(accountOpen || libraryOpen) && cloudStatus ? <p role="status" className="nb-note">{cloudStatus}</p> : null}
+          {accountOpen ? <AccountPanel onImport={importGuestPages} /> : null}
+          {libraryOpen && !accountOpen ? <NotebookLibrary library={library} activeId={notebookId} cloud={Boolean(accountId)}
             onSelect={id=>{notebookRef.current=id;setNotebookId(id);}}
             onRename={(id,name)=>setLibrary(previous=>renameNotebook(previous,id,name))}
             onCreate={(name,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);}}

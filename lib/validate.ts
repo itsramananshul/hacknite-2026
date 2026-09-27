@@ -69,6 +69,7 @@ function assertSampleIsFinite(
     Number.isFinite(value) ? null : `${label} evaluated to ${String(value)} at t = ${t}`;
 
   for (const object of sample.objects) {
+    if(object.scale?.some(value=>!Number.isFinite(value) || value<=0 || value>200))throw new SceneValidationError(`${where}: object "${object.id}" scale must stay between 0 and 200`);
     for (const [axis, value] of object.position.entries()) {
       const problem = bad(`object "${object.id}" position.${"xyz"[axis]}`, value);
       if (problem) {
@@ -163,6 +164,7 @@ function buildWarnings(scene: SceneScript, compiled: ReturnType<typeof compileSc
     noteUsage(object.rotation.x);
     noteUsage(object.rotation.y);
     noteUsage(object.rotation.z);
+    if(object.scale){noteUsage(object.scale.x);noteUsage(object.scale.y);noteUsage(object.scale.z);}
     noteUsage(object.visible);
     if ((object.shape === "sphere" || object.shape === "cylinder" || object.shape === "planet") && object.size.radius <= 0) {
       warnings.push(`object "${object.id}" is a ${object.shape} with radius 0, it will not be visible`);

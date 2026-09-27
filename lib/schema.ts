@@ -151,6 +151,7 @@ export const objectSchema = z.object({
   label: shortText(SCENE_LIMITS.maxLabelLength),
   position: expressionPointSchema,
   rotation: expressionPointSchema,
+  scale: expressionPointSchema.optional(),
   trail: z.boolean(),
   visible: expressionSchema,
 });

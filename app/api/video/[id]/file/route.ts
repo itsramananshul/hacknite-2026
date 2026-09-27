@@ -1,3 +1,5 @@
+import {requireUser} from "@/lib/request-auth";
+import {requireVideoOwner} from "@/lib/video";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { errorResponse, RouteError } from "@/lib/gemini";
@@ -5,7 +7,9 @@ import { videoDirectory, videoStatus } from "@/lib/video";
 export const runtime="nodejs";
 export async function GET(request:Request,context:{params:Promise<{id:string}>}) {
   try {
+    const {user}=await requireUser(request);
     const {id}=await context.params;
+    await requireVideoOwner(id,user.id);
     if((await videoStatus(id)).status!=="ready") throw new RouteError(409,"video_pending","The video is still rendering.");
     const bytes=await readFile(join(videoDirectory(id),"explanation.mp4"));
     const range=request.headers.get("range");

@@ -39,7 +39,7 @@ export function videoPayload(raw:unknown, values:Record<string,number> = {}, sol
   return {scene:{...scene,steps:steps.map(step=>({...step,equations:step.equations.map(equationLatex)}))},frames,answers,values,solution};
 }
 
-export async function startVideo(raw:unknown,values:Record<string,number>,solution:string) {
+export async function startVideo(raw:unknown,values:Record<string,number>,solution:string,ownerId?:string) {
   if(process.env.VERCEL) throw new RouteError(503,"video_local_only","Video rendering currently runs on your laptop. Open the local Chalk app to generate an MP4.");
   if(active.size>=2) throw new RouteError(429,"video_busy","Two videos are rendering. Wait for one to finish.");
   const python=process.env.CHALK_VIDEO_PYTHON || join(process.cwd(),".chalk-work","video-venv",process.platform==="win32" ? "Scripts/python.exe" : "bin/python");
@@ -48,6 +48,7 @@ export async function startVideo(raw:unknown,values:Record<string,number>,soluti
   const id=randomUUID();
   const directory=videoDirectory(id);
   await mkdir(directory,{recursive:true});
+  if(ownerId)await writeFile(join(directory,"owner.json"),JSON.stringify({userId:ownerId}));
   await writeFile(join(directory,"input.json"),JSON.stringify(payload));
   await writeFile(join(directory,"status.json"),JSON.stringify({status:"rendering",message:"Creating narration and rendering the explanation frames."}));
   active.add(id);
@@ -78,4 +79,9 @@ export async function videoStatus(id:string) {
     if(error instanceof RouteError) throw error;
     throw new RouteError(404,"video_missing","This video is not available on this computer.");
   }
+}
+
+export async function requireVideoOwner(id:string,userId:string){
+  try{const owner=JSON.parse(await readFile(join(videoDirectory(id),"owner.json"),"utf8"));if(owner.userId===userId)return;}catch{ /* Legacy videos are not exposed to new accounts. */ }
+  throw new RouteError(404,"video_missing","This video is not available in your account.");
 }

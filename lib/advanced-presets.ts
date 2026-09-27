@@ -58,5 +58,10 @@ const drag=build("Fall through a fluid with linear drag","A body of mass m falls
    {title:"Integrate to find displacement",narration:"Integrate the velocity from the release time to obtain downward displacement. Initially it agrees with free fall; later the distance grows almost linearly because the speed is close to terminal velocity. This model does not describe turbulent or quadratic drag.",equations:["s(t)=v_T[t-\\tau(1-e^{-t/\\tau})]"]}],
   [{question:"Terminal speed",expression:"m*g/c",unit:"m/s"},{question:"Speed at 6 s",expression:dragVelocity("6"),unit:"m/s"},{question:"Downward displacement at 6 s",expression:dragDistance("6"),unit:"m"}]);
 drag.camera={position:[5,-4,15],target:[0,-5,0]};
+drag.vectors=[
+  {id:"weight",attachTo:"body",kind:"force",components:point("0","-m*g"),label:"Weight (N)",color:"#176BFA",visible:"1"},
+  {id:"drag-force",attachTo:"body",kind:"force",components:point("0",`c*(${dragVelocity("t")})`),label:"Drag (N)",color:"#B58331",visible:"t>0"},
+];
+for(const step of drag.steps)step.showVectors=["weight","drag-force"];
 export const advancedPresets={damping,circuit,drag};
 export const advancedPresetList=[{key:"damping" as const,name:"Damped spring oscillation",blurb:damping.problemText},{key:"circuit" as const,name:"Source-free RLC circuit",blurb:circuit.problemText},{key:"drag" as const,name:"Fall through a fluid with linear drag",blurb:drag.problemText}];

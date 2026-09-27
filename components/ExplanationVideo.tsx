@@ -1,4 +1,5 @@
 "use client";
+import {authFetch} from "@/lib/auth-fetch";
 import { useEffect, useRef, useState } from "react";
 import type { SceneScript } from "@/lib/schema";
 
@@ -16,7 +17,7 @@ export default function ExplanationVideo({scene,values,solution}:{scene:SceneScr
     let timer:ReturnType<typeof setTimeout>;
     const poll=async()=>{
       try {
-        const response=await fetch(`/api/video/${job}`,{signal:controller.signal});
+        const response=await authFetch(`/api/video/${job}`,{signal:controller.signal});
         const result=await response.json();
         if(stopped) return;
         if(!response.ok) throw new Error(result.error || "Could not check the video.");
@@ -33,7 +34,7 @@ export default function ExplanationVideo({scene,values,solution}:{scene:SceneScr
     pending.current=true;
     setStatus("rendering");setMessage("Preparing your explanation video…");setJob(null);
     try {
-      const response=await fetch("/api/video",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scene,values,solution})});
+      const response=await authFetch("/api/video",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({scene,values,solution})});
       const result=await response.json();
       if(!response.ok) throw new Error(result.error || "Could not create the video.");
       setCaptured(fingerprint);setJob(result.id);

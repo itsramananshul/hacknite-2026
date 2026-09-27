@@ -120,7 +120,7 @@ const PROJECTILE_FLIGHT = `(${PROJECTILE_UP}+sqrt((${PROJECTILE_UP})^2+2*g*h))/g
 export const projectilePreset: SceneScript = {
   title: "Projectile off a cliff",
   problemText:
-    "A ball leaves the face of a cliff at height h with speed v0 at angle theta above the horizontal. The ledge is drawn at the default height of 5 m, so moving h slides the launch point up and down the cliff face. Gravity pulls straight down at g, air resistance is ignored, and the ball is tracked by its centre point with a drawn radius of 0.18 m. The ball is frozen the moment it reaches the ground, so the timeline can keep running while the answer stays the true time of flight.",
+    "A ball leaves the face of a cliff at height h with speed v0 at angle theta above the horizontal. The ledge height follows h, so moving the height slider moves its top and the launch point together. Gravity pulls straight down at g, air resistance is ignored, and the ball is tracked by its centre point with a drawn radius of 0.18 m. The ball is frozen the moment it reaches the ground, so the timeline can keep running while the answer stays the true time of flight.",
   variables: [
     variable("h", 5, "m", "Launch height", true, 1, 12, 0.5),
     variable("v0", 10, "m/s", "Launch speed", true, 0, 20, 0.5),
@@ -136,7 +136,8 @@ export const projectilePreset: SceneScript = {
       id: "cliff",
       shape: "box",
       size: { x: 3, y: 5, z: 6, radius: 0 },
-      position: point(-1.5, 2.5, 0),
+      position: point(-1.5, "h/2", 0),
+      scale: point(1, "h/5", 1),
       color: BOARD,
       label: "cliff",
     }),
