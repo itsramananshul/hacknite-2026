@@ -1288,3 +1288,12 @@
 .nb-app .field select, .nb-app .field textarea, .nb-app .field input[type="number"] {
   background: #fff; color: var(--nb-ink); border-color: var(--nb-line); color-scheme: light;
 }
+.nb-app .nb-share-link {
+  width: 180px;
+  min-width: 0;
+  padding: 8px;
+  color: #0f1b2d;
+  background: #fff;
+  border: 1px solid #cdd4df;
+  border-radius: 6px;
+}

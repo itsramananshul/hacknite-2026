@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SolveResult } from "@/lib/gemini";
+import {readSolveStream} from "@/lib/solve-stream";
 
 export type { SolveResult };
 
@@ -97,6 +98,7 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [checkedSolution,setCheckedSolution]=useState<Omit<SolveResult,"scene">|null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -191,6 +193,7 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
     inFlight.current = true;
     setBusy(true);
     setError(null);
+    setCheckedSolution(null);
     setStatus(WORKING_STATUS);
     const controller = new AbortController();
     let ranOut = false;
@@ -201,7 +204,7 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
     try {
       const response = await fetch("/api/solve", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Accept":"application/x-ndjson" },
         body: JSON.stringify(text ? { problemText: text, image: image ?? undefined } : { image }),
         signal: controller.signal,
       });
@@ -210,7 +213,12 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
         setError(await readFailure(response));
         return;
       }
-      const payload: unknown = await response.json();
+      const payload: unknown = response.headers.get("content-type")?.includes("application/x-ndjson")
+        ? await readSolveStream(response,result=>{
+          setCheckedSolution(result);
+          setStatus("Your answer is calculated. Building the 3D explanation…");
+        })
+        : await response.json();
       if (!payload || typeof payload !== "object") {
         setStatus(null);
         setError("The service answered without a solution.");
@@ -240,12 +248,12 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
         answers,
         warnings,
       });
-    } catch {
+    } catch (failure) {
       setStatus(null);
       setError(
         ranOut
           ? `The solver did not answer within ${Math.round(REQUEST_TIMEOUT_MS / 1000)} seconds, so the request was stopped. Your problem is still here, press Solve again.`
-          : "The request to the server did not finish. Your problem is still here, press Solve again.",
+          : failure instanceof Error ? failure.message : "The request to the server did not finish. Your problem is still here, press Solve again.",
       );
     } finally {
       clearTimeout(timer);
@@ -357,6 +365,12 @@ export default function InputPanel({ onSolved }: InputPanelProps) {
           {status}
         </p>
       ) : null}
+
+      {checkedSolution ? <section aria-label="Calculated solution" className="nb-section">
+        <h3 className="nb-h3">Calculated answers</h3>
+        <dl className="nb-results">{checkedSolution.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
+        <p className="nb-note" style={{whiteSpace:"pre-wrap"}}>{checkedSolution.solutionText}</p>
+      </section> : null}
 
       {error ? (
         <p className="notice notice-warn" role="status" style={{ marginTop: 10 }}>

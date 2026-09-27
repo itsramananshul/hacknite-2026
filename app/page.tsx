@@ -139,6 +139,7 @@ export default function Page() {
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
   const [problemOpen, setProblemOpen] = useState(false);
 
   const playingState = useRef(playing);
@@ -146,17 +147,27 @@ export default function Page() {
 
   const sharedClock = useRef(0);
   useEffect(() => {
+    const loadSharedScene = () => {
     const encoded = new URLSearchParams(window.location.hash.slice(1)).get("scene");
     if (!encoded || encoded.length > 30000) return;
     try {
       const decoded = decompressFromEncodedURIComponent(encoded);
       if (!decoded || decoded.length > 100000) throw new Error("Invalid shared scene");
       const shared = validateSceneScript(JSON.parse(decoded)).scene;
+      setPlaying(false);
+      setTime(0);
+      sharedClock.current = 0;
+      setCompare(false);
+      setPredict(false);
       setScene(shared);
       setNotice("Shared scene loaded. Press play to explore it.");
     } catch {
       setNotice("This shared scene could not be loaded. The presets are available.");
     }
+    };
+    loadSharedScene();
+    window.addEventListener("hashchange", loadSharedScene);
+    return () => window.removeEventListener("hashchange", loadSharedScene);
   }, []);
   const prepared = useMemo(() => prepare(scene), [scene]);
   const live = prepared.scene;
@@ -452,8 +463,16 @@ export default function Page() {
       if (encoded.length > 30000) throw new Error("This scene is too large for a share link.");
       const url = new URL(window.location.href);
       url.hash = `scene=${encoded}`;
-      await navigator.clipboard.writeText(url.toString());
-      setShareStatus("Link copied");
+      setShareUrl(url.toString());
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(url.toString());
+          setShareStatus("Link copied");
+          setShareUrl("");
+          return;
+        } catch { /* Clipboard permissions vary; expose the same link below. */ }
+      }
+      setShareStatus("Select and copy your link");
     } catch {
       setShareStatus("Could not copy the link");
     }
@@ -500,6 +519,7 @@ export default function Page() {
             Share
           </button>
           <span className="share-status" role="status">{shareStatus}</span>
+          {shareUrl ? <input className="nb-share-link" aria-label="Scene share link" readOnly value={shareUrl} onFocus={event => event.currentTarget.select()} /> : null}
         </div>
       </header>
 

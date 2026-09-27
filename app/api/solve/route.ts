@@ -14,7 +14,25 @@ export const maxDuration = 180;
 export async function POST(request: Request): Promise<Response> {
   try {
     const body = await readRequestJson(request);
-    return Response.json(await solveProblem(parseSolveRequest(body)));
+    const parsed=parseSolveRequest(body);
+    if(request.headers.get("accept")?.includes("application/x-ndjson")) {
+      const encoder=new TextEncoder();
+      let cancelled=false;
+      const stream=new ReadableStream({
+        start(controller) {
+          const send=(event:unknown)=>{if(!cancelled) controller.enqueue(encoder.encode(JSON.stringify(event)+"\n"));};
+          void solveProblem(parsed,result=>send({type:"answers",result})).then(result=>{
+            send({type:"complete",result});
+          }).catch(async error=>{
+            const response=errorResponse(error);
+            send({type:"error",...(await response.json())});
+          }).finally(()=>{if(!cancelled) controller.close();});
+        },
+        cancel(){cancelled=true;},
+      });
+      return new Response(stream,{headers:{"Content-Type":"application/x-ndjson","Cache-Control":"no-store"}});
+    }
+    return Response.json(await solveProblem(parsed));
   } catch (error) {
     return errorResponse(error);
   }

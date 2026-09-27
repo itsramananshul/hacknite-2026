@@ -2,7 +2,7 @@
 // pipeline as OpenCode, without a coding agent's unrelated workspace context.
 import { randomUUID } from "node:crypto";
 import { runOpenCodePipeline, readOpenCodeConfig, type EnvLike } from "./opencode";
-import { RouteError, type PipelineRequest, type SolveRequest } from "./gemini";
+import { RouteError, type PipelineRequest, type SolveRequest, type SolveResult } from "./gemini";
 import {sceneScriptSchema,type SceneScript} from "./schema";
 import {z} from "zod";
 
@@ -70,7 +70,7 @@ export function normalizeLocalScene(raw:unknown):unknown {
   return scene;
 }
 
-export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike = process.env, fetchImpl: typeof fetch = fetch) {
+export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike = process.env, fetchImpl: typeof fetch = fetch, onSolved?: (result:Omit<SolveResult,"scene">)=>void) {
   if (env.VERCEL) throw new RouteError(503,"ollama_local_only","Local inference runs on your laptop. Open the local Chalk app.");
   const model = env.OLLAMA_MODEL || "qwen3.5:9b";
   const visionModel = env.OLLAMA_VISION_MODEL || model;
@@ -93,8 +93,9 @@ export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike =
     if (body.system !== previousSystem) {
       previousSystem=body.system;
       const system=body.system.includes("The JSON Schema of that object") ? localSceneSystem : body.system;
-      const constraints=body.system.includes("The JSON Schema of that object")?"Return an instance of the requested JSON object, never its schema. Step focus lists contain ONLY object IDs from objects. Vector IDs belong ONLY in showVectors. visible is a string expression such as \"1\", never a boolean. Avoid unnecessary objects and vectors. Expressions may use ONLY t, pi, e and names explicitly declared in variables. Answer names like tFall are NOT variables; inline their expressions instead. For steps, use focus: [] and showVectors: [] if unsure. Never use t in an answer expression.":"Keep solutionText under 3000 characters. Use plain text formulas, no LaTeX. Return only the requested answers and put arithmetic operations in each constant expression.";
-      messages=[{role:"system",content:system+"\n"+constraints+" All four size fields including radius are required, even on planes. equations must be an array of strings, such as [\"y = h - g*t^2/2\"]. Motion must use t in position expressions; a falling ball cannot have a constant height."}];
+      const sceneRequest=body.system.includes("The JSON Schema of that object");
+      const constraints=sceneRequest?"Return a compact instance, never its schema. Use 2 explanation steps, each with at most 2 sentences. Use only physically necessary objects. Focus lists contain ONLY object IDs; showVectors ONLY vector IDs. visible is a string, never a boolean. Inline all derived expressions. All four size fields including radius are required. Motion must use t in position expressions.":"Keep solutionText under 1200 characters: state given values, formulas, assumptions and requested answers concisely. No repeated derivations or extra questions. Use plain text formulas. Each answer must use a constant arithmetic expression with numbers substituted; no variable names.";
+      messages=[{role:"system",content:system+"\n"+constraints}];
     }
     const sceneCall=body.system.includes("The JSON Schema of that object");
     const guidance=sceneCall ? "\nFINAL CHECK BEFORE ANSWERING: return animated positions, not initial positions. For a falling body, its y must contain t, for example max(0,h-g*t^2/2), never just 5 or h. For other moving bodies use the motion formula you derived. Use declared adjustable variables in the motion and answer expressions, rather than repeating their numerical values. Equations are string ARRAYS, and every size includes radius. Include the actual spring or rope connectors when appropriate." : "";
@@ -103,7 +104,7 @@ export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike =
       method:"POST",headers:{"Content-Type":"application/json"},signal:init?.signal,
       body:JSON.stringify({model:body.model.modelID,stream:false,think:false,
         format:body.system.includes("The JSON Schema of that object")?sceneFormat:solveFormat,keep_alive:"10m",
-        options:{num_ctx:8192,num_predict:5000,temperature:.1},
+        options:{num_ctx:sceneCall?8192:4096,num_predict:sceneCall?2600:1200,temperature:.1},
         messages}),
     });
     if (!response.ok) return response;
@@ -116,11 +117,11 @@ export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike =
     return Response.json({info:{},parts:[{type:"text",text:result.message.content}]});
   }) as typeof fetch;
   try { return await runOpenCodePipeline(request,{env:{OPENCODE_SERVER_URL:base,OPENCODE_PROVIDER_ID:"ollama",OPENCODE_MODEL:model,
-    OPENCODE_VISION_MODEL:visionModel,OPENCODE_TIMEOUT_MS:env.OLLAMA_TIMEOUT_MS || "180000"},fetchImpl:localTransport});
+    OPENCODE_VISION_MODEL:visionModel,OPENCODE_TIMEOUT_MS:env.OLLAMA_TIMEOUT_MS || "180000"},fetchImpl:localTransport,onSolved});
   } catch(error) {
     if(error instanceof RouteError) throw new RouteError(error.status,error.code.replace(/^opencode_/,"ollama_"),error.message.replaceAll("OpenCode","Ollama"));
     throw error;
   }
 }
-export const solveWithOllama=(request:SolveRequest)=>runOllamaPipeline({problemText:request.problemText,image:request.image});
+export const solveWithOllama=(request:SolveRequest,onSolved?:(result:Omit<SolveResult,"scene">)=>void)=>runOllamaPipeline({problemText:request.problemText,image:request.image},process.env,fetch,onSolved);
 export const editWithOllama=(scene:SceneScript,instruction:string)=>runOllamaPipeline({problemText:scene.problemText,image:null,currentScene:scene,instruction});

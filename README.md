@@ -2,7 +2,7 @@
 
 An interactive physics workspace by Anshul Raman. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
 
-The interface follows the supplied Chalk design: a green board, handwritten wordmark, compact controls, and a cream answer panel.
+The interface follows the supplied notebook design: warm white pages, serif derivations, blue controls, and a light 3D viewport.
 
 ## Features
 
@@ -20,7 +20,7 @@ The interface follows the supplied Chalk design: a green board, handwritten word
 
 ## Run locally
 
-Install dependencies with `npm install` and copy `.env.example` to `.env.local`. Sign in to your existing OpenCode Go account in OpenCode. The local solver uses DeepSeek V4 Flash for text and Kimi K2.6 for photos; Gemini is not required. Keep authentication in OpenCode's local account store, never in browser code.
+Install dependencies with `npm install` and copy `.env.example` to `.env.local`. Sign in to your existing OpenCode Go account in OpenCode. The startup uses DeepSeek V4.1 Flash for text and photos; Gemini is not required. Keep authentication in OpenCode's local account store, never in browser code. Set `CHALK_HOST=0.0.0.0` to serve the website over your Wi-Fi. The model bridge stays on loopback.
 
 ```sh
 npm run dev:opencode
@@ -34,6 +34,8 @@ npm run build
 `POST /api/solve` accepts problem text or a resized image. The first OpenCode model call returns a worked solution and constant arithmetic expressions. Chalk evaluates these expressions on the server to obtain numerical answers. The second call returns a structured scene script with math expressions instead of executable rendering code. `POST /api/edit` re-solves the problem after the requested change using the same pipeline. Each runtime session denies tools and is cleaned up when the request ends; problem text cannot invoke coding tools.
 
 Expressions are parsed with mathjs and checked against an AST whitelist before compilation. Assignments, property access, arbitrary functions, strings, and nonfinite results are rejected. Validation checks references, bounds, 200 timeline samples, selected slider extremes, and answer agreement within 2 percent. An invalid scene receives one repair attempt. The OpenCode path withholds a scene that remains invalid or disagrees with the calculated answers.
+
+The browser requests an NDJSON stream and displays calculated answers before scene generation completes. JSON clients retain the original complete-response format. A live Venturi-manometer photo test returned checked answers in 10.4 seconds and a validated scene in 158.3 seconds, including repair. These are measured timings, not a latency guarantee. Ollama on a second computer remains available through the setup in `MAC_MODEL_SETUP.md`.
 
 These checks catch structural and numerical errors. They do not prove that an inferred physical model fits a problem. The examples use stated idealizations; the pipe example uses continuity and Bernoulli rather than a turbulence solver. New problems may produce an explanation or diagram that is less complete than a cached example.
 

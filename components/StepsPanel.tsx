@@ -4,6 +4,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import { useEffect, useMemo, useState } from "react";
 import type { SceneStep } from "@/lib/schema";
+import { equationLatex } from "@/lib/equations";
 
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
 
@@ -18,7 +19,7 @@ export function activeStepIndex(steps: SceneStep[], time: number): number {
 function Tex({ latex, display }: { latex: string; display: boolean }) {
   const html = useMemo(() => {
     try {
-      return katex.renderToString(latex, {
+      return katex.renderToString(equationLatex(latex), {
         displayMode: display,
         throwOnError: false,
         errorColor: "#b3261e",

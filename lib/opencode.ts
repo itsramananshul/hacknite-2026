@@ -94,6 +94,7 @@ export interface OpenCodeConfig {
 export interface OpenCodeDeps {
   env?: EnvLike;
   fetchImpl?: typeof fetch;
+  onSolved?: (result: Omit<SolveResult,"scene">) => void;
 }
 
 const fail = (status: number, code: string, message: string): RouteError =>
@@ -804,7 +805,7 @@ async function runScene(
       scene: second.scene,
       warnings: [
         ...second.warnings,
-        "The first scene came back invalid, so the exact problems were sent back to the local model and it returned a corrected one.",
+        "The first scene came back invalid, so the exact problems were sent back to the model and it returned a corrected one.",
       ],
     };
   }
@@ -864,6 +865,7 @@ export async function runOpenCodePipeline(request: PipelineRequest, deps: OpenCo
   };
   return withSession(client, async (session) => {
     const solved = await runSolve(client, session, request);
+    deps.onSolved?.({solutionText:solved.solutionText,answers:solved.answers,warnings:solved.warnings});
     const built = await runScene(client, session, {
       problemText: request.problemText,
       fromImage: request.image !== null,

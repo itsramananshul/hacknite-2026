@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { compileScene } from "./expressions";
 import { validateSceneScript } from "./validate";
 import { RouteError } from "./gemini";
+import { equationLatex } from "./equations";
 
 const root = join(process.cwd(), ".chalk-work", "videos");
 const identifier = /^[a-f0-9-]{36}$/;
@@ -35,7 +36,7 @@ export function videoPayload(raw:unknown, values:Record<string,number> = {}, sol
   if(steps.reduce((sum,s)=>sum+s.narration.length,0)>9000) {
     throw new RouteError(422,"video_too_long","This explanation is too long for one local video. Use a shorter problem or fewer explanation steps.");
   }
-  return {scene:{...scene,steps},frames,answers,values,solution};
+  return {scene:{...scene,steps:steps.map(step=>({...step,equations:step.equations.map(equationLatex)}))},frames,answers,values,solution};
 }
 
 export async function startVideo(raw:unknown,values:Record<string,number>,solution:string) {
