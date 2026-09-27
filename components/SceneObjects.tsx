@@ -114,8 +114,8 @@ function labelHeight(object: SceneObject): number {
   if (["resistor","capacitor","inductor"].includes(object.shape)) return .65;
   const size = readSize(object);
   if (object.shape === "plane") return 0.12;
-  if (object.shape === "box" || object.shape === "car") return size.y / 2 + 0.32;
-  return size.radius + 0.3;
+  if (object.shape === "box" || object.shape === "car") return size.y / 2;
+  return object.shape === "cylinder" || object.shape === "cone" ? size.y / 2 : size.radius;
 }
 
 function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: SampleRef; lit: boolean }) {
@@ -166,6 +166,7 @@ function ObjectLabels({scene,sampleRef,timeRef,pointIds,hovered}:{scene:SceneScr
       const depth=-extent.z;
       holder.scale.setScalar(captionWorldScale(depth,(camera as THREE.PerspectiveCamera).fov,viewport.height,.2));
       anchor.project(camera);
+      anchor.y += 16 / Math.max(1,viewport.height);
       if(depth<=camera.near || anchor.z>1 || anchor.x< -1.05 || anchor.x>1.05 || anchor.y< -1.05 || anchor.y>1.05){holder.visible=false;continue;}
       const {half,height}=captionBox(object.label,viewport.width,viewport.height);
       const position=placeLabel(anchor.x,anchor.y,half,height,placed);

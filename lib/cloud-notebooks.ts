@@ -1,5 +1,5 @@
 import type {SupabaseClient} from "@supabase/supabase-js";
-import {EMPTY_LIBRARY, type Library, type Notebook, type PageEntry} from "./notebooks";
+import {type Library, type Notebook, type PageEntry} from "./notebooks";
 
 export interface SavedPage {questionPage: {id:string; notebookId?:string; problemText:string; status:string; [key:string]:unknown}; scene:unknown; solution:string; values:Record<string,number>}
 interface Pending {notebooks:Record<string,Notebook>; pages:Record<string,{entry:PageEntry; payload:SavedPage}>}
@@ -38,7 +38,6 @@ export async function loadCloudLibrary(client:SupabaseClient,userId:string,cache
   const pending=readPending(cache);
   const notebooks=new Map(books.map(row=>[row.id as string,row as unknown as Notebook]));
   for(const notebook of Object.values(pending.notebooks))notebooks.set(notebook.id,notebook);
-  if(!notebooks.size)for(const notebook of structuredClone(EMPTY_LIBRARY).notebooks){notebooks.set(notebook.id,notebook);pending.notebooks[notebook.id]=notebook;}
   const entries=new Map<string,PageEntry>();
   for(const row of pages){
     const id=row.id as string;

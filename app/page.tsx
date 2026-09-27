@@ -9,7 +9,7 @@ import AccountPanel from "@/components/AccountPanel";
 import AuthScreen from "@/components/AuthScreen";
 import {getSupabaseClient} from "@/lib/supabase-client";
 import {accountStorage,loadCloudLibrary,flushCloud,queueNotebooks,queuePage,readPending} from "@/lib/cloud-notebooks";
-import {EMPTY_LIBRARY, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
+import {EMPTY_LIBRARY, contentSignature, initialNotebook, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
 import ExplanationVideo from "@/components/ExplanationVideo";
 import StepsPanel, { activeStepIndex } from "@/components/StepsPanel";
@@ -150,7 +150,7 @@ export default function Page() {
   const [libraryOpen,setLibraryOpen] = useState(false);
   const [accountOpen,setAccountOpen] = useState(false);
   const [storageError,setStorageError] = useState<string|null>(null);
-  const activeNotebook = library.notebooks.find(n=>n.id===notebookId) ?? library.notebooks[0];
+  const activeNotebook = library.notebooks.find(n=>n.id===notebookId) ?? library.notebooks[0] ?? {id:"",name:"Notebooks",subject:"physics" as Subject};
   const pendingValues = useRef<Record<string,number>|null>(null);
   const [presetKey, setPresetKey] = useState<PresetKey>("projectile");
   const [scene, setScene] = useState<SceneScript | null>(() => presets.projectile);
@@ -160,6 +160,8 @@ export default function Page() {
     answers:Omit<SolveResult,"scene">|null; error:string|null;
   }|null>(null);
   const activeQuestion = useRef<string|null>(null);
+  const generatingHere = useRef<string|null>(null);
+  const savedPageSignature = useRef("");
   const [restoredInput,setRestoredInput] = useState({version:0,text:""});
   useEffect(()=>{
     if(accountId===undefined)return;
@@ -167,11 +169,12 @@ export default function Page() {
     const cache=accountStorage(localStorage,accountId);
     const client=getSupabaseClient();
     activeQuestion.current=null;
+    generatingHere.current=null;savedPageSignature.current="";
     setQuestionPage(null);
     setScene(presets.projectile);
     setSolution("");setPlaying(false);setProblemOpen(false);
     setRestoredInput(previous=>({version:previous.version+1,text:""}));
-    const restore=()=>{
+    const restore=(preserveView=false)=>{
       if(!alive)return;
       const id=new URL(window.location.href).searchParams.get("page");
       if(!id){
@@ -188,12 +191,14 @@ export default function Page() {
         activeQuestion.current=id;
         const book=saved.questionPage.notebookId ?? "physics";
         notebookRef.current=book;setNotebookId(book);pendingValues.current=saved.values ?? null;
-        setLibraryOpen(false);setLeftView("problem");
-        setQuestionPage({...saved.questionPage,...(!restoredScene && ["solving","building"].includes(saved.questionPage.status) ? {
-          status:"error",error:"This page was reopened before its simulation finished. Submit the problem again to generate it."
-        } : {})});
+        if(!preserveView){setLibraryOpen(false);setLeftView("problem");}
+        const restoredValues=saved.values ?? (restoredScene ? initialValues(restoredScene) : {});
+        savedPageSignature.current=contentSignature({questionPage:saved.questionPage,scene:restoredScene,solution:saved.solution ?? "",values:restoredValues});
+        setValues(restoredValues);
+        setQuestionPage(saved.questionPage);
         setScene(restoredScene);setSolution(typeof saved.solution==="string" ? saved.solution : "");setPlaying(false);
-        setPredict(false);setView("simulation");setNotice(null);setEditError(null);setSelected(null);setShareUrl("");setShareStatus("");
+        if(!preserveView){setPredict(false);setView("simulation");setSelected(null);setShareUrl("");setShareStatus("");}
+        setNotice(null);setEditError(null);
         setRestoredInput(previous=>({version:previous.version+1,text:saved.questionPage.problemText}));
       } catch {setStorageError("This saved page could not be opened.");}
     };
@@ -208,17 +213,40 @@ export default function Page() {
       if(!alive)return;
       lastLibrary.current=loaded;setLibrary(loaded);
       const selected=cache.getItem("chalk-active-notebook");
-      const book=loaded.notebooks.some(n=>n.id===selected) ? selected! : loaded.notebooks[0].id;
+      const book=initialNotebook(loaded,selected);
       notebookRef.current=book;setNotebookId(book);
       restore();setLibraryReady(true);
+      if(!new URL(window.location.href).searchParams.has("page") && loaded.pages.length)setLibraryOpen(true);
     }
     void load();
     const syncLibrary=(event:StorageEvent)=>{
       const key=accountId ? `chalk-account:${accountId}:chalk-library:v1` : "chalk-library:v1";
       if(event.key===key){try{const loaded=readLibrary(cache);lastLibrary.current=loaded;setLibrary(loaded);}catch{ /* Current library stays available. */ }}
     };
-    window.addEventListener("popstate",restore);window.addEventListener("storage",syncLibrary);
-    return()=>{alive=false;window.removeEventListener("popstate",restore);window.removeEventListener("storage",syncLibrary);};
+    let refreshing=false;
+    const refreshRemote=async()=>{
+      if(!accountId || !client || refreshing || !alive || cloudBusy.current)return;
+      refreshing=true;
+      const id=new URL(window.location.href).searchParams.get("page");
+      const signatureOf=(raw:string|null)=>raw ? contentSignature(JSON.parse(raw)) : "";
+      try{
+        const before=id ? signatureOf(cache.getItem(`chalk-page:${id}`)) : "";
+        const loaded=await loadCloudLibrary(client,accountId,cache);
+        if(!alive || accountRef.current!==accountId)return;
+        if(JSON.stringify(lastLibrary.current)!==JSON.stringify(loaded)){lastLibrary.current=loaded;setLibrary(loaded);}
+        if(id && generatingHere.current!==id && before!==signatureOf(cache.getItem(`chalk-page:${id}`))){
+          activeQuestion.current=null;restore(true);
+        }
+      }catch(error){if(alive)setCloudStatus(`Cloud refresh failed. Cached pages are available. ${describe(error,"Try again.")}`);}
+      finally{refreshing=false;}
+    };
+    const refreshVisible=()=>{if(document.visibilityState==="visible")void refreshRemote();};
+    const remoteTimer=window.setInterval(refreshVisible,10000);
+    window.addEventListener("focus",refreshVisible);window.addEventListener("online",refreshVisible);
+    document.addEventListener("visibilitychange",refreshVisible);
+    const restoreOnNavigation=()=>restore();
+    window.addEventListener("popstate",restoreOnNavigation);window.addEventListener("storage",syncLibrary);
+    return()=>{alive=false;window.clearInterval(remoteTimer);window.removeEventListener("focus",refreshVisible);window.removeEventListener("online",refreshVisible);document.removeEventListener("visibilitychange",refreshVisible);window.removeEventListener("popstate",restoreOnNavigation);window.removeEventListener("storage",syncLibrary);};
   },[accountId]);
   const [values, setValues] = useState<Record<string, number>>(() => initialValues(presets.projectile));
   useEffect(()=>{
@@ -226,7 +254,10 @@ export default function Page() {
     try {
       const cache=accountStorage(localStorage,accountId);
       const payload={questionPage,scene,solution,values};
+      const signature=contentSignature(payload);
+      if(signature===savedPageSignature.current)return;
       cache.setItem(`chalk-page:${questionPage.id}`,JSON.stringify(payload));
+      savedPageSignature.current=signature;
       const entry={id:questionPage.id,notebookId:questionPage.notebookId ?? "physics",
         title:scene?.title ?? (questionPage.problemText.slice(0,120) || "Problem from a photo"),
         status:questionPage.status,updatedAt:new Date().toISOString()};
@@ -440,19 +471,22 @@ export default function Page() {
   }, [time, duration, guessMissing]);
 
   const togglePredict = useCallback(() => {
-    const next = !predict;
+    const next = !predict || leftView!=="prediction" || libraryOpen || accountOpen;
     setPredict(next);
     setLeftView(next ? "prediction" : "problem");
     setLibraryOpen(false);
     setAccountOpen(false);
     if (next) {
+      setView("simulation");
+      sharedClock.current=0;
+      setPlaybackRevision(previous=>previous+1);
       setPlaying(false);
       setManual(false);
       setTime(0);
       setGuess("");
       setRevealed(false);
     }
-  }, [predict]);
+  }, [predict,leftView,libraryOpen,accountOpen]);
 
   const changeValue = useCallback(
     (name: string, value: number) => {
@@ -507,6 +541,7 @@ export default function Page() {
     if(!libraryReady)throw new Error("Your notebooks are still loading. Please try again in a moment.");
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
     activeQuestion.current=id;
+    generatingHere.current=id;savedPageSignature.current="";
     setLeftView("problem");
     setLibraryOpen(false);
     setProblemOpen(false);
@@ -548,11 +583,13 @@ export default function Page() {
 
   const handleFailed = useCallback((error:string,id:string)=>{
     if(activeQuestion.current!==id) return;
+    generatingHere.current=null;
     setQuestionPage(previous=>previous?.id===id ? {...previous,status:"error",error} : previous);
   },[]);
 
   const handleSolved = useCallback((result: SolveResult,id:string) => {
     if(activeQuestion.current!==id) return;
+    generatingHere.current=null;
     setQuestionPage(previous=>previous?.id===id ? {...previous,status:result.scene?"ready":"answer-only",answers:result} : previous);
     setSolution(result.solutionText);
     if (result.scene) {
@@ -693,7 +730,9 @@ export default function Page() {
     }catch(error){setCloudStatus(`Import could not finish. Guest pages remain unchanged. ${describe(error,"Try again.")}`);}
   };
 
+  const createNotebook=(name:string,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);};
   if(!accountId || !sessionReady || !libraryReady)return <AuthScreen checking={accountId===undefined} verifying={Boolean(accountId)} error={sessionError} />;
+  if(!library.notebooks.length)return <div className="nb-app"><header className="nb-header"><span className="nb-wordmark">Chalk</span><div className="nb-header-actions"><button type="button" className="nb-btn nb-btn-ghost" onClick={()=>setAccountOpen(!accountOpen)}>Account</button></div></header><main className="nb-library-onboarding">{accountOpen ? <AccountPanel onImport={importGuestPages}/> : <NotebookLibrary library={library} activeId="" cloud onSelect={()=>{}} onRename={()=>{}} onCreate={createNotebook} onOpen={()=>{}}/>}{cloudStatus ? <p className="nb-note" role="status">{cloudStatus}</p> : null}</main></div>;
   return (
     <div className="nb-app">
       <header className="nb-header">
@@ -725,15 +764,19 @@ export default function Page() {
 
       <div className="nb-body">
         <nav className="nb-rail" aria-label="Notebook sections">
-          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={leftView==="problem"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("problem");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Notebooks" aria-pressed={libraryOpen} onClick={()=>{setLibraryOpen(true);setAccountOpen(false);document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 4h11a2 2 0 0 1 2 2v11H5a2 2 0 0 1-2-2V4Zm3 0v13M8 1h9a1 1 0 0 1 1 1v12M9 8h4M9 11h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+            <span className="nb-rail-label">Notebooks</span>
+          </button>
+          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={!libraryOpen && !accountOpen && leftView==="problem"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("problem");setPredict(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconProblem />
             <span className="nb-rail-label">Problem</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={leftView==="derivation"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("derivation");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={!libraryOpen && !accountOpen && leftView==="derivation"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("derivation");setPredict(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconDerivation />
             <span className="nb-rail-label">Derivation</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={leftView==="variables"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("variables");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={!libraryOpen && !accountOpen && leftView==="variables"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("variables");setPredict(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconVariables />
             <span className="nb-rail-label">Variables</span>
           </button>
@@ -741,12 +784,12 @@ export default function Page() {
 
         <aside className="nb-notebook" aria-label="Notebook">
           {storageError ? <p role="alert" className="nb-notice nb-warn">{storageError}</p> : null}
-          {(accountOpen || libraryOpen) && cloudStatus ? <p role="status" className="nb-note">{cloudStatus}</p> : null}
+          {cloudStatus ? <p role="status" className="nb-note">{cloudStatus}</p> : null}
           {accountOpen ? <AccountPanel onImport={importGuestPages} /> : null}
           {libraryOpen && !accountOpen ? <NotebookLibrary library={library} activeId={notebookId} cloud={Boolean(accountId)}
             onSelect={id=>{notebookRef.current=id;setNotebookId(id);}}
             onRename={(id,name)=>setLibrary(previous=>renameNotebook(previous,id,name))}
-            onCreate={(name,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);}}
+            onCreate={createNotebook}
             onOpen={id=>{const url=new URL(window.location.href);url.searchParams.set("page",id);url.hash="nb-problem";window.history.pushState(null,"",url);activeQuestion.current=null;window.dispatchEvent(new PopStateEvent("popstate"));}} /> : null}
           <div hidden={libraryOpen || accountOpen} className="nb-panel-content">
           <section className="nb-section" id="nb-problem" hidden={leftView!=="problem"}>
@@ -853,7 +896,7 @@ export default function Page() {
                     >
                       Reveal the answer
                     </button>
-                    <button type="button" className="nb-btn nb-btn-ghost" onClick={resetPrediction}>
+                    <button type="button" className="nb-btn nb-btn-ghost" onClick={()=>{resetPrediction();reset();sharedClock.current=0;setPlaybackRevision(previous=>previous+1);}}>
                       Clear
                     </button>
                   </div>
@@ -1001,7 +1044,7 @@ export default function Page() {
               ))}
             </select>
             <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={predict} onClick={togglePredict} disabled={!live}>
-              {predict ? "Hide prediction" : "Predict"}
+              {predict && leftView==="prediction" && !libraryOpen && !accountOpen ? "Hide prediction" : "Predict"}
             </button>
             {selected !== null ? (
               <button type="button" className="nb-btn nb-btn-ghost" onClick={() => setSelected(null)}>

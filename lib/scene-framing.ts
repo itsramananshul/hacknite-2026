@@ -1,10 +1,10 @@
 import type {SceneScript} from "./schema";
 import {compileScene} from "./expressions";
 
-export function sceneFrame(scene:SceneScript,values:Record<string,number>,aspect:number) {
+export function sceneFrame(scene:SceneScript,values:Record<string,number>,aspect:number,cameraHint=scene.camera) {
   const compiled=compileScene(scene);
   const low=[Infinity,Infinity,Infinity],high=[-Infinity,-Infinity,-Infinity];
-  const objects=scene.objects.filter(o=>!(/^(ground|floor|base)$/i.test(o.id)));
+  const objects=scene.objects.some(o=>o.shape!=="plane") ? scene.objects.filter(o=>o.shape!=="plane") : scene.objects;
   for(let i=0;i<=24;i++){
     const sample=compiled.sample(scene.duration*i/24,values);
     for(const object of objects){
@@ -25,7 +25,7 @@ export function sceneFrame(scene:SceneScript,values:Record<string,number>,aspect
   const vertical=42*Math.PI/360;
   const halfFov=Math.min(vertical,Math.atan(Math.tan(vertical)*Math.max(.1,aspect)));
   const distance=radius/Math.sin(halfFov)*1.12;
-  const direction=scene.camera.position.map((v,i)=>v-scene.camera.target[i]);
+  const direction=cameraHint.position.map((v,i)=>v-cameraHint.target[i]);
   const length=Math.hypot(...direction)||1;
   const position=target.map((v,i)=>v+direction[i]/length*distance) as [number,number,number];
   return {target,position,distance,radius};

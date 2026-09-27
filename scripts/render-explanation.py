@@ -9,7 +9,7 @@ import subprocess
 import sys
 import textwrap
 import wave
-from video_layout import place_caption
+from video_layout import place_caption, diagram_bounds
 
 from manim import (Scene, Text, MathTex, VGroup, Circle, Rectangle, Line, Arrow,
                    FadeIn, FadeOut, Write, Create, ValueTracker, always_redraw,
@@ -39,7 +39,7 @@ def paragraph(text, width=62, size=23, color=CREAM, max_width=12):
         result.scale_to_fit_width(max_width)
     return result
 
-ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delta pi exp log ln dot ddot text mathrm left right cdot times vec tau mu rho epsilon phi sigma int sum infty leq geq partial begin end aligned cases quad qquad max min approx lambda nu eta kappa nabla pm degree percent dfrac tfrac overline hat underbrace".split())
+ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delta pi exp log ln dot ddot text mathrm left right cdot times vec tau mu rho epsilon phi sigma int sum infty leq geq partial begin end aligned cases quad qquad max min approx lambda nu eta kappa nabla pm degree percent dfrac tfrac overline hat underbrace rightarrow leftarrow leftrightarrow rightleftharpoons".split())
 def equation(source):
     # TeX commands outside this mathematical vocabulary are never compiled.
     commands = re.findall(r"\\([A-Za-z]+)", source)
@@ -89,9 +89,10 @@ class Explanation(Scene):
                            obj["size"]["radius"] if obj["shape"] in ("sphere","planet","pendulumBob","pulley") else (0 if obj["shape"]=="plane" else obj["size"]["y"]/2)] for obj in scene["objects"]])
         frame_scales=np.array([[o.get("scale",[1,1,1])[:2] for o in frame["objects"]] for frame in frames])
         extents=extents*frame_scales
-        lower = (projected-extents).min(axis=(0,1)) if projected.size else np.array([-1,-1])
-        upper = (projected+extents).max(axis=(0,1)) if projected.size else np.array([1,1])
-        span = np.maximum(upper-lower, 2)
+        # Frame the experiment, not the much larger decorative bench/floor.
+        visible=np.array([[o["visible"] for o in frame["objects"]] for frame in frames],dtype=bool)
+        lower,upper=diagram_bounds(projected,extents,visible,[o["shape"] for o in scene["objects"]])
+        span = np.maximum(upper-lower, .6)
         scale = min(5.5/span[0], 3.3/span[1])
         middle = (lower+upper)/2
         tracker = ValueTracker(0)
@@ -120,12 +121,17 @@ class Explanation(Scene):
                 body=Triangle(color=color,fill_opacity=.6).stretch_to_fit_width(max(.12,size["radius"]*2*scale)).stretch_to_fit_height(max(.08,size["y"]*scale))
             else:
                 body=Rectangle(width=max(0.12,size["x"]*scale),height=max(0.08,size["y"]*scale),color=color,fill_opacity=0.3)
+            # Projection can put a falling ball over its support. Apparatus must
+            # not paint over the moving body simply because it appears later in JSON.
+            body.set_z_index(20 if obj["shape"] in ("sphere","planet","pendulumBob") else 0)
             label=Text(obj["label"],font="Arial",font_size=14,color=CREAM) if obj["label"] else VGroup()
             if label.width>2: label.scale_to_fit_width(2)
             if obj["label"]: label.add_background_rectangle(color=GREEN,opacity=.95,buff=.05)
+            label.set_z_index(40)
             pieces.append((body,label))
             body_dimensions.append((body.width,body.height))
             body_angles.append(0)
+        leaders=[Line([0,0,0],[.01,0,0],color=MINT,stroke_width=1).set_z_index(30) for _ in pieces]
         connections=[(connector,VMobject(color=CREAM,stroke_width=2)) for connector in scene["connectors"]]
 
         def update_diagram(group):
@@ -177,6 +183,7 @@ class Explanation(Scene):
 
             # Keep object captions inside the diagram, below the step heading.
             placed=[]
+            for leader in leaders: leader.set_opacity(0)
             active=next((step for step in scene["steps"] if step["tStart"]<=t<step["tEnd"]),scene["steps"][-1])
             focus=set(active.get("focus",[]))
             focused_points=[o["id"] for o in scene["objects"] if o["id"] in payload.get("pointIds",[]) and o["id"] in focus]
@@ -200,10 +207,17 @@ class Explanation(Scene):
                     continue
                 slot=place_caption(label.get_center()[0],label.get_center()[1],label.width,label.height,placed)
                 if slot is None: label.set_opacity(0)
-                else: label.move_to([slot[0],slot[1],0])
+                else:
+                    label.move_to([slot[0],slot[1],0])
+                    # A short callout preserves the association when captions
+                    # need to move sideways to avoid a nearby caption.
+                    start=body.get_top()
+                    end=label.get_bottom()
+                    if np.linalg.norm(end-start)>.14:
+                        leaders[index].put_start_and_end_on(start,end).set_opacity(.65)
 
         # Captions render above every body, so a nearby body cannot hide them.
-        drawing=VGroup(*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
+        drawing=VGroup(*leaders,*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
         drawing.add_updater(update_diagram)
         update_diagram(drawing)
         divider=Line([-.5,2.1,0],[-.5,-2.6,0],color="#3A6B5D")

@@ -43,10 +43,11 @@ export interface SceneCanvasProps {
 const FRAME_GAP_CAP = 0.1;
 const REPORT_SECONDS = 0.1;
 
-function FrameScene({scene,values,shot}:{scene:SceneScript;values:Record<string,number>;shot:Shot|null}) {
+function FrameScene({scene,values,shot,onAspect}:{scene:SceneScript;values:Record<string,number>;shot:Shot|null;onAspect:(value:number)=>void}) {
   const camera=useThree(state=>state.camera);
   const size=useThree(state=>state.size);
   const controls=useThree(state=>state.controls) as {target:THREE.Vector3;update:()=>void;maxDistance:number}|null;
+  useEffect(()=>{onAspect(size.width/Math.max(1,size.height));},[size.width,size.height,onAspect]);
   useEffect(()=>{
     if(shot)return;
     const frame=sceneFrame(scene,values,size.width/Math.max(1,size.height));
@@ -261,6 +262,16 @@ export default function SceneCanvas({
   })), [scene, values]);
   const presentation=useMemo(()=>motionPresentation(scene,sceneValues),[scene,sceneValues]);
   const compiled=useMemo(()=>compileScene(presentation.scene),[presentation]);
+  const [boardAspect,setBoardAspect]=useState(1.5);
+  const framedShot=useMemo(()=>{
+    if(!shot)return null;
+    const frame=sceneFrame(presentation.scene,sceneValues,boardAspect,shot);
+    if(!frame)return shot;
+    const distance=Math.hypot(...shot.position.map((v,i)=>v-shot.target[i]));
+    const offset=Math.hypot(...shot.target.map((v,i)=>v-frame.target[i]));
+    return distance<frame.distance || offset>frame.radius*.5 ? {position:frame.position,target:frame.target} : shot;
+  },[shot,presentation.scene,sceneValues,boardAspect]);
+
   const sampleRef = useRef<null>(null) as SampleRef;
   const labelBoxes=useRef<LabelBox[]>([]);
   const timeRef = useRef(0) as TimeRef;
@@ -297,7 +308,7 @@ export default function SceneCanvas({
           playing={playing}
           speed={speed}
           time={time}
-          shot={shot}
+          shot={framedShot}
           onTime={onTime}
           onComplete={onComplete}
           onLoop={onLoop}
@@ -367,7 +378,7 @@ export default function SceneCanvas({
           maxPolarAngle={Math.PI / 2 - 0.02}
           onStart={onManualOrbit}
         />
-        <FrameScene scene={scene} values={sceneValues} shot={shot} />
+        <FrameScene scene={scene} values={sceneValues} shot={framedShot} onAspect={setBoardAspect} />
       </Canvas>
     </BoardBoundary>
   );

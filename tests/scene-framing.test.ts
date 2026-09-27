@@ -14,3 +14,16 @@ test("every preset frames visible apparatus and trajectories at parameter extrem
     }
   }
 });
+
+test("a lab bench does not dominate the framing of a small experiment",()=>{
+ const scene=structuredClone(presets.projectile);
+ scene.objects=scene.objects.filter(o=>o.id==="ball");
+ scene.steps=scene.steps.map(step=>({...step,focus:["ball"]}));
+ scene.objects[0].position={x:"0",y:".4",z:"0"};
+ scene.objects[0].size={x:.14,y:.14,z:.14,radius:.07};
+ const original=sceneFrame(scene,{},1.5)!;
+ const bench=structuredClone(scene.objects[0]);bench.shape="plane";bench.position={x:"0",y:"0",z:"0"};
+ bench.id="labBench";bench.size={x:80,y:.1,z:80,radius:0};
+ scene.objects.push(bench);
+ assert.deepEqual(sceneFrame(scene,{},1.5),original);
+});
