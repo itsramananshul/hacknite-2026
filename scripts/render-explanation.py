@@ -42,7 +42,8 @@ ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delt
 def equation(source):
     # TeX commands outside this mathematical vocabulary are never compiled.
     commands = re.findall(r"\\([A-Za-z]+)", source)
-    if all(command in ALLOWED_TEX for command in commands) and len(source) <= 400 and not re.search(r"[#%~]", source):
+    environments=re.findall(r"\\(?:begin|end)\s*\{([^}]+)\}",source)
+    if all(command in ALLOWED_TEX for command in commands) and all(name in ("aligned","cases") for name in environments) and len(source) <= 400 and not re.search(r"[#%~]", source):
         try:
             result = MathTex(source, font_size=31, color=GOLD)
             if result.width > 5.8:
