@@ -43,6 +43,9 @@ export const RESERVED_IDENTIFIERS: readonly string[] = [
 ];
 
 export const SHAPES = [
+  "resistor",
+  "capacitor",
+  "inductor",
   "box",
   "sphere",
   "cylinder",

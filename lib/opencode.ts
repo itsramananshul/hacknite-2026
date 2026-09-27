@@ -46,9 +46,9 @@ export const MAX_ANSWERS = SCENE_LIMITS.maxAnswers;
 
 export const OPENCODE_DEFAULT_SERVER_URL = "http://127.0.0.1:4098";
 export const OPENCODE_DEFAULT_PROVIDER_ID = "opencode-go";
-export const OPENCODE_DEFAULT_MODEL_ID = "deepseek-v4-flash";
-export const OPENCODE_DEFAULT_VISION_MODEL_ID = "kimi-k2.6";
-export const OPENCODE_DEFAULT_TIMEOUT_MS = 45_000;
+export const OPENCODE_DEFAULT_MODEL_ID = "deepseek-v4.1-flash";
+export const OPENCODE_DEFAULT_VISION_MODEL_ID = "deepseek-v4.1-flash";
+export const OPENCODE_DEFAULT_TIMEOUT_MS = 180_000;
 
 const LOCAL_ONLY_SETUP =
   "Chalk solves through a local OpenCode server over loopback, so it cannot run on Vercel. Run the app on this machine instead, with an OpenCode server listening on " +
@@ -88,6 +88,7 @@ export interface OpenCodeConfig {
   /** Empty when this deployment has no image capable model, which is honest. */
   visionModelID: string;
   timeoutMs: number;
+  variant?: string;
 }
 
 export interface OpenCodeDeps {
@@ -182,6 +183,7 @@ export function readOpenCodeConfig(env: EnvLike = process.env): OpenCodeConfig {
     visionProviderID: env.OPENCODE_VISION_PROVIDER_ID?.trim() || providerID,
     visionModelID: env.OPENCODE_VISION_MODEL?.trim() ?? OPENCODE_DEFAULT_VISION_MODEL_ID,
     timeoutMs: readTimeout(env),
+    variant: env.OPENCODE_VARIANT?.trim() || "low",
   };
 }
 
@@ -305,7 +307,7 @@ async function send(
       throw fail(
         503,
         "opencode_timeout",
-        `OpenCode did not answer ${path} within ${Math.round(timeoutMs / 1000)} seconds. Try a shorter problem, or try again.`,
+        `The AI model did not finish within ${Math.round(timeoutMs / 1000)} seconds. Your problem is still here; try solving it again.`,
       );
     }
     throw unreachable(error);
@@ -438,6 +440,7 @@ async function askModel(client: Client, session: Session, input: AskInput): Prom
     `/session/${session.id}/message`,
     {
       model: { providerID: input.providerID, modelID: input.modelID },
+      variant: client.config.variant,
       system: input.system,
       tools: disabledToolsMap(session.tools),
       parts: input.parts ?? [{ type: "text", text: input.text }],
@@ -770,6 +773,10 @@ function checkScene(reply: SceneReply, expected: ExpectedAnswer[]): CheckedScene
   if (reply.raw === null) return { ok: false, problems: reply.problems || "the reply held no scene" };
   try {
     const checked = validateSceneScript(reply.raw, expected);
+    if (checked.scene.objects.some(object => object.trail) &&
+        !checked.scene.objects.some(object => Object.values(object.position).some(expression => /\bt\b/.test(expression)))) {
+      return {ok:false, problems:"The scene requests motion trails but every object's position is constant. Put the physical time-dependent motion in position expressions using t. Do not describe motion only in narration or equations."};
+    }
     return { ok: true, scene: checked.scene, warnings: checked.warnings };
   } catch (error) {
     return { ok: false, problems: describeAll(error) };

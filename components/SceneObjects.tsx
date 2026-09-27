@@ -1,8 +1,10 @@
 "use client";
 
 import { Billboard, Line, Text } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useCallback, useContext, useEffect, useMemo, useRef } from "react";
+import {LabelLayout,type LabelBox} from "./LabelLayout";
+import {placeLabel} from "@/lib/label-layout";
 import * as THREE from "three";
 import { compileScene } from "@/lib/expressions";
 import type { SceneObject, SceneScript } from "@/lib/schema";
@@ -42,7 +44,7 @@ function Shape({ object, lit }: { object: SceneObject; lit: boolean }) {
   const size = readSize(object);
   const material = (
     <meshStandardMaterial
-      color={object.color}
+      color={object.shape === "plane" && /ground|floor|landing|base/i.test(object.id) ? "#D0D6DC" : object.color}
       roughness={0.6}
       metalness={0.08}
       emissive={lit ? "#a3e0c0" : "#000000"}
@@ -50,6 +52,17 @@ function Shape({ object, lit }: { object: SceneObject; lit: boolean }) {
     />
   );
   switch (object.shape) {
+    case "capacitor":
+      return <group>
+        <Line points={[[-.7,0,0],[-.14,0,0]]} color={object.color} lineWidth={3} />
+        <Line points={[[.14,0,0],[.7,0,0]]} color={object.color} lineWidth={3} />
+        <Line points={[[-.14,-.4,0],[-.14,.4,0]]} color={object.color} lineWidth={5} />
+        <Line points={[[.14,-.4,0],[.14,.4,0]]} color={object.color} lineWidth={5} />
+      </group>;
+    case "resistor":
+      return <Line points={Array.from({length:11},(_,i)=>[-.7+i*.14,i===0||i===10?0:(i%2?.22:-.22),0] as [number,number,number])} color={object.color} lineWidth={3} />;
+    case "inductor":
+      return <Line points={Array.from({length:81},(_,i)=>[-.7+i/80*1.4,Math.sin(i/80*Math.PI*8)*.22,Math.cos(i/80*Math.PI*8)*.22] as [number,number,number])} color={object.color} lineWidth={3} />;
     case "box":
     case "car":
     case "ramp":
@@ -94,6 +107,7 @@ function Shape({ object, lit }: { object: SceneObject; lit: boolean }) {
 }
 
 function labelHeight(object: SceneObject): number {
+  if (["resistor","capacitor","inductor"].includes(object.shape)) return .65;
   const size = readSize(object);
   if (object.shape === "plane") return 0.12;
   if (object.shape === "box" || object.shape === "car") return size.y / 2 + 0.32;
@@ -120,13 +134,57 @@ function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: Samp
   return (
     <group ref={group}>
       <Shape object={object} lit={lit} />
-      {object.label ? (
-        <Billboard position={[0, labelHeight(object), 0]}>
-          <Text font="/fonts/chalk-mono.ttf" fontSize={0.2} color="#F2EDE1" outlineWidth={0.015} outlineColor="#0F2A24" anchorX="center" anchorY="bottom">{object.label}</Text>
-        </Billboard>
-      ) : null}
     </group>
   );
+}
+
+function ObjectLabels({scene,sampleRef,timeRef}:{scene:SceneScript;sampleRef:SampleRef;timeRef:TimeRef}) {
+  const layout=useContext(LabelLayout);
+  const camera=useThree(state=>state.camera);
+  const holders=useRef<Record<string,THREE.Group|null>>({});
+  const leaders=useRef<Record<string,LineHandle|null>>({});
+  const origin=useMemo(()=>new THREE.Vector3(),[]);
+  const linePoints=useMemo(()=>new Float32Array(6),[]);
+  const anchor=useMemo(()=>new THREE.Vector3(),[]);
+  const extent=useMemo(()=>new THREE.Vector3(),[]);
+  const right=useMemo(()=>new THREE.Vector3(),[]);
+  const up=useMemo(()=>new THREE.Vector3(),[]);
+  useFrame(()=>{
+    const placed:LabelBox[]=[];
+    const active=scene.steps.find(step=>timeRef.current>=step.tStart && timeRef.current<step.tEnd) || scene.steps.at(-1);
+    const repeatedMarkers=scene.objects.filter(o=>/^marker \d+$/i.test(o.label));
+    const focus=new Set(active?.focus||[]);
+    if(layout) layout.current=placed;
+    right.setFromMatrixColumn(camera.matrixWorld,0);
+    up.setFromMatrixColumn(camera.matrixWorld,1);
+    for(const object of scene.objects) {
+      const holder=holders.current[object.id];
+      const frame=sampleRef.current?.objects.find(o=>o.id===object.id);
+      if(!holder || !frame) continue;
+      holder.visible=frame.visible && (repeatedMarkers.length<6 || !/^marker \d+$/i.test(object.label) || focus.has(object.id));
+      const leader=leaders.current[object.id];
+      if(leader) leader.visible=false;
+      if(!holder.visible) continue;
+      origin.fromArray(frame.position);
+      anchor.copy(origin).y+=labelHeight(object);
+      extent.copy(anchor).addScaledVector(right,Math.min(3,object.label.length*.13)/2).project(camera);
+      anchor.project(camera);
+      const half=Math.abs(extent.x-anchor.x)+.025;
+      extent.fromArray(frame.position).y+=labelHeight(object);
+      extent.addScaledVector(up,.25*Math.max(1,Math.ceil(object.label.length*.13/3))).project(camera);
+      const height=Math.abs(extent.y-anchor.y)+.025;
+      const position=placeLabel(anchor.x,anchor.y,half,height,placed);
+      const moved=Math.hypot(position.x-anchor.x,position.y-anchor.y)>.07;
+      anchor.x=position.x;anchor.y=position.y;
+      holder.position.copy(anchor.unproject(camera));
+      if(leader && moved){leader.visible=true;linePoints.set([origin.x,origin.y,origin.z,anchor.x,anchor.y,anchor.z]);leader.geometry.setPositions(linePoints);}
+    }
+  });
+  return <group>{scene.objects.filter(o=>o.label).map(object=><group key={object.id}>
+    <Line ref={node=>{leaders.current[object.id]=node as LineHandle|null;}} points={[[0,0,0],[0,1,0]]} color="#738396" lineWidth={1} transparent opacity={.55} />
+    <group ref={node=>{holders.current[object.id]=node;}}>
+    <Billboard><Text font="/fonts/chalk-mono.ttf" fontSize={.2} maxWidth={3} color="#101D33" outlineWidth={.006} outlineColor="#DCE1E5" anchorX="center" anchorY="bottom">{object.label}</Text></Billboard>
+  </group></group>)}</group>;
 }
 
 function buildPath(compiled: CompiledSceneApi, values: Record<string, number>, id: string, duration: number): Float32Array {
@@ -178,7 +236,7 @@ function Trail({
   );
   const flat = useRef(full);
   const seed = useMemo(
-    () => [new THREE.Vector3(full[0], full[1], full[2]), new THREE.Vector3(full[3], full[4], full[5])],
+    () => Array.from({length:MAX_POINTS},()=>new THREE.Vector3(full[0],full[1],full[2])),
     [],
   );
 
@@ -237,7 +295,7 @@ function Trail({
           faint.current = node;
         }}
         points={toPoints(full)}
-        color="#7fb99c"
+        color="#738396"
         lineWidth={1}
         transparent
         opacity={0.26}
@@ -247,7 +305,7 @@ function Trail({
           live.current = node;
         }}
         points={seed}
-        color="#a3e0c0"
+        color="#176BFA"
         lineWidth={2.2}
         transparent
         opacity={0.95}
@@ -274,6 +332,7 @@ export default function SceneObjects({
   const lit = useMemo(() => new Set(highlighted), [highlighted]);
   return (
     <group>
+      <ObjectLabels scene={scene} sampleRef={sampleRef} timeRef={timeRef} />
       {scene.objects.map((object) => (
         <Body key={object.id} object={object} sampleRef={sampleRef} lit={lit.has(object.id)} />
       ))}

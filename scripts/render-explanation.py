@@ -12,7 +12,7 @@ import wave
 
 from manim import (Scene, Text, MathTex, VGroup, Circle, Rectangle, Line, Arrow,
                    FadeIn, FadeOut, Write, Create, ValueTracker, always_redraw,
-                   config, tempconfig, linear, UP, DOWN, LEFT, RIGHT)
+                   VMobject, Triangle, config, tempconfig, linear, UP, DOWN, LEFT, RIGHT)
 import numpy as np
 
 directory = Path(sys.argv[1]).resolve()
@@ -38,12 +38,12 @@ def paragraph(text, width=62, size=23, color=CREAM, max_width=12):
         result.scale_to_fit_width(max_width)
     return result
 
-ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delta pi exp log ln dot ddot text mathrm left right cdot times vec tau mu rho epsilon phi sigma int sum infty leq geq partial begin end aligned cases quad qquad max min".split())
+ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delta pi exp log ln dot ddot text mathrm left right cdot times vec tau mu rho epsilon phi sigma int sum infty leq geq partial begin end aligned cases quad qquad max min approx lambda nu eta kappa nabla pm degree percent dfrac tfrac overline hat underbrace".split())
 def equation(source):
     # TeX commands outside this mathematical vocabulary are never compiled.
     commands = re.findall(r"\\([A-Za-z]+)", source)
     environments=re.findall(r"\\(?:begin|end)\s*\{([^}]+)\}",source)
-    if all(command in ALLOWED_TEX for command in commands) and all(name in ("aligned","cases") for name in environments) and len(source) <= 400 and not re.search(r"[#%~]", source):
+    if all(command in ALLOWED_TEX for command in commands) and all(name in ("aligned","cases") for name in environments) and len(source) <= 400 and "^^" not in source and not re.search(r"[#~]|(?<!\\)%", source):
         try:
             result = MathTex(source, font_size=31, color=GOLD)
             if result.width > 5.8:
@@ -51,7 +51,8 @@ def equation(source):
             return result
         except Exception:
             pass
-    return paragraph(source, width=40, size=21, color=GOLD, max_width=5.8)
+    # Never expose raw LaTeX when an unsupported formula cannot be typeset.
+    return paragraph("Equation could not be typeset", width=40, size=18, color=GOLD, max_width=5.8)
 
 def audio_duration(index, default):
     file = directory / f"voice-{index}.wav"
@@ -77,8 +78,10 @@ class Explanation(Scene):
         projected = positions[:, :, :2].copy()
         projected[:, :, 0] += 0.35 * positions[:, :, 2]
         projected[:, :, 1] += 0.15 * positions[:, :, 2]
-        lower = projected.min(axis=(0,1)) if projected.size else np.array([-1,-1])
-        upper = projected.max(axis=(0,1)) if projected.size else np.array([1,1])
+        extents=np.array([[obj["size"]["radius"] if obj["shape"] in ("sphere","planet","pendulumBob","pulley") else obj["size"]["x"]/2,
+                           obj["size"]["radius"] if obj["shape"] in ("sphere","planet","pendulumBob","pulley") else (0 if obj["shape"]=="plane" else obj["size"]["y"]/2)] for obj in scene["objects"]])
+        lower = (projected-extents).min(axis=(0,1)) if projected.size else np.array([-1,-1])
+        upper = (projected+extents).max(axis=(0,1)) if projected.size else np.array([1,1])
         span = np.maximum(upper-lower, 2)
         scale = min(5.5/span[0], 3.3/span[1])
         middle = (lower+upper)/2
@@ -92,13 +95,23 @@ class Explanation(Scene):
         for obj in scene["objects"]:
             color=obj["color"] if re.fullmatch(r"#[0-9a-fA-F]{6}",obj["color"]) else MINT
             size=obj["size"]
-            if obj["shape"] in ("sphere","planet","pendulumBob","pulley"):
-                body=Circle(radius=max(0.10,min(0.6,size["radius"]*scale)),color=color,fill_opacity=0.6)
+            if obj["shape"] == "plane":
+                body=Line([-min(2,size["x"]*scale/2),0,0],[min(2,size["x"]*scale/2),0,0],color=color)
+            elif obj["shape"] == "capacitor":
+                body=VGroup(Line([-.4,0,0],[-.1,0,0],color=color),Line([.1,0,0],[.4,0,0],color=color),Line([-.1,-.25,0],[-.1,.25,0],color=color),Line([.1,-.25,0],[.1,.25,0],color=color))
+            elif obj["shape"] in ("resistor","inductor"):
+                body=VMobject(color=color).set_points_as_corners([[-.4+i*.08,0 if i in (0,10) else (.12 if i%2 else -.12),0] for i in range(11)])
+            elif obj["shape"] in ("sphere","planet","pendulumBob","pulley"):
+                body=Circle(radius=max(0.05,size["radius"]*scale),color=color,fill_opacity=0.6)
+            elif obj["shape"] == "cone":
+                body=Triangle(color=color,fill_opacity=.6).stretch_to_fit_width(max(.12,size["radius"]*2*scale)).stretch_to_fit_height(max(.08,size["y"]*scale))
             else:
-                body=Rectangle(width=max(0.12,min(4,size["x"]*scale)),height=max(0.08,min(1.5,size["y"]*scale)),color=color,fill_opacity=0.3)
+                body=Rectangle(width=max(0.12,size["x"]*scale),height=max(0.08,size["y"]*scale),color=color,fill_opacity=0.3)
             label=Text(obj["label"],font="Arial",font_size=14,color=CREAM) if obj["label"] else VGroup()
             if label.width>2: label.scale_to_fit_width(2)
+            if obj["label"]: label.add_background_rectangle(color=GREEN,opacity=.95,buff=.05)
             pieces.append((body,label))
+        connections=[(connector,VMobject(color=CREAM,stroke_width=2)) for connector in scene["connectors"]]
 
         def update_diagram(group):
             t = tracker.get_value()
@@ -116,7 +129,49 @@ class Explanation(Scene):
                 if obj["label"]:
                     label.next_to(body,UP,buff=0.08)
 
-        drawing=VGroup(*[item for pair in pieces for item in pair])
+            def endpoint(value):
+                if value in [o["id"] for o in scene["objects"]]:
+                    index=next(i for i,o in enumerate(scene["objects"]) if o["id"]==value)
+                    first=frames[a]["objects"][index]
+                    if not first["visible"]: return None
+                    position=(1-blend)*np.array(first["position"])+blend*np.array(frames[b]["objects"][index]["position"])
+                    return point(position)
+                return point([float(n) for n in value.split(",")])
+            for connector,line in connections:
+                start,end=endpoint(connector["from"]),endpoint(connector["to"])
+                if start is None or end is None or np.linalg.norm(end-start)<1e-6:
+                    line.set_opacity(0);continue
+                line.set_opacity(1)
+                axis=end-start
+                normal=np.array([-axis[1],axis[0],0])/np.linalg.norm(axis)
+                count=81 if connector["kind"]=="spring" else 2
+                points=[]
+                for i in range(count):
+                    u=i/(count-1)
+                    offset=math.sin(u*math.pi*20)*min(.12,np.linalg.norm(axis)/12) if connector["kind"]=="spring" else 0
+                    points.append(start+u*axis+normal*offset)
+                line.set_points_as_corners(points)
+
+            # Keep object captions inside the diagram, below the step heading.
+            placed=[]
+            for body,label in pieces:
+                if not len(label) or label.get_opacity() == 0:
+                    continue
+                label.shift([min(0,-.75-label.get_right()[0])+max(0,-6.65-label.get_left()[0]),0,0])
+                if label.get_top()[1] > 2.05:
+                    label.shift([0,2.05-label.get_top()[1],0])
+                for _ in range(len(pieces)+1):
+                    overlap=next((other for other in placed if
+                        label.get_left()[0]<other.get_right()[0]+.12 and
+                        label.get_right()[0]>other.get_left()[0]-.12 and
+                        label.get_bottom()[1]<other.get_top()[1]+.10 and
+                        label.get_top()[1]>other.get_bottom()[1]-.10),None)
+                    if overlap is None: break
+                    label.shift([0,overlap.get_bottom()[1]-.12-label.get_top()[1],0])
+                placed.append(label)
+
+        # Captions render above every body, so a nearby body cannot hide them.
+        drawing=VGroup(*[line for connector,line in connections],*[body for body,label in pieces],*[label for body,label in pieces])
         drawing.add_updater(update_diagram)
         update_diagram(drawing)
         divider=Line([-.5,2.1,0],[-.5,-2.6,0],color="#3A6B5D")

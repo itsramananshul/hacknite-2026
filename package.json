@@ -5,7 +5,9 @@
   "author": "Anshul Raman",
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1",
+    "dev:lan": "next dev --hostname 0.0.0.0",
     "dev:opencode": "node scripts/dev-opencode.mjs",
+    "dev:local": "node scripts/dev-local.mjs",
     "setup:video": "node scripts/setup-video.mjs",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1",

@@ -20,17 +20,33 @@ const damping=build("Damped spring oscillation","A mass m on a spring k is relea
    {title:"Solve the decaying oscillation",narration:"The displacement oscillates inside an exponentially shrinking envelope. Damping lowers the oscillation frequency below the undamped spring frequency. The extra sine term ensures the mass starts with zero velocity.",equations:["\\alpha=\\frac{b}{2m}","\\omega_d=\\sqrt{\\frac{k}{m}-\\alpha^2}","x=Ae^{-\\alpha t}(\\cos\\omega_d t+\\frac{\\alpha}{\\omega_d}\\sin\\omega_d t)"]},
    {title:"Check the energy",narration:"Kinetic and spring energy exchange during each oscillation. Their total decreases because the damper removes energy at the rate b times velocity squared. Increasing damping changes both the envelope and frequency.",equations:["E=\\frac12 m\\dot{x}^2+\\frac12 kx^2","\\frac{dE}{dt}=-b\\dot{x}^2"]}],
   [{question:"Damped angular frequency",expression:dampingFrequency,unit:"rad/s"},{question:"Displacement at 6 s",expression:dampingDisplacement("6"),unit:"m"},{question:"Mechanical energy at 6 s",expression:`0.5*m*(${dampingVelocity("6")})^2+0.5*k*(${dampingDisplacement("6")})^2`,unit:"J"}]);
+damping.connectors = [{id:"spring",kind:"spring",from:"anchor",to:"mass"}];
+damping.camera={position:[-1,1,5],target:[-1,0,0]};
 
 export const circuitFrequency="sqrt(1/(L*C)-(R/(2*L))^2)";
 export const circuitCharge=(t:string)=>`Q*exp(-R*${t}/(2*L))*(cos(${circuitFrequency}*${t})+R/(2*L*${circuitFrequency})*sin(${circuitFrequency}*${t}))`;
 export const circuitCurrent=(t:string)=>`Q/(L*C*${circuitFrequency})*exp(-R*${t}/(2*L))*sin(${circuitFrequency}*${t})`;
 const circuit=build("Source-free RLC circuit","A capacitor carrying initial charge Q discharges through a series resistor R and inductor L, with zero initial current. Find frequency, charge, and discharge current at 6 seconds. Assumptions: ideal lumped components, constant R/L/C, underdamped response, no external source. The moving marker represents normalized capacitor charge; its spatial motion is diagrammatic, not electron speed. Positive discharge current is -dq/dt.",
   [variable("L",1,"H","Inductance",.5,2,.1),variable("C",.04,"F","Capacitance",.01,.05,.005),variable("R",.5,"ohm","Resistance",.1,1,.1),variable("Q",.1,"C","Initial charge",.01,.2,.01)],
-  [object("charge","Charge indicator","sphere",`2*(${circuitCharge("t")})/Q`,"0"),object("capacitor","Capacitor","box","-3","0"),object("resistor","Resistor","box","0","-1.5"),object("inductor","Inductor","box","3","0")],
+  [object("charge","Charge indicator","sphere",`2*(${circuitCharge("t")})/Q`,"-2.5"),object("capacitor","Capacitor","box","-2","1"),object("resistor","Resistor","box","0","1"),object("inductor","Inductor","box","2","1")],
   [{title:"Apply Kirchhoff's voltage law",narration:"The resistor, inductor and capacitor voltage drops sum to zero. Expressing current through the time derivative of capacitor charge produces a differential equation with the same mathematical structure as a damped spring.",equations:["L\\ddot{q}+R\\dot{q}+q/C=0","q(0)=Q,\\quad\\dot{q}(0)=0"]},
    {title:"Oscillation between electric and magnetic energy",narration:"The capacitor's electric energy moves into the inductor's magnetic field and then back again. Resistance dissipates energy, so the charge reversals become smaller. The marker shows the sign and normalized magnitude of charge, not the trajectory of an electron.",equations:["\\alpha=R/(2L)","\\omega_d=\\sqrt{1/(LC)-\\alpha^2}"]},
    {title:"Read the charge and current",narration:"Evaluate the charge solution at the requested time. Discharge current is the negative derivative of charge under our sign convention. The natural angular frequency and exponential damping depend on different combinations of the component values.",equations:["i=-\\dot{q}","E=q^2/(2C)+Li^2/2","\\dot{E}=-Ri^2"]}],
   [{question:"Damped angular frequency",expression:circuitFrequency,unit:"rad/s"},{question:"Capacitor charge at 6 s",expression:circuitCharge("6"),unit:"C"},{question:"Discharge current at 6 s",expression:circuitCurrent("6"),unit:"A"}]);
+
+circuit.objects.find(o=>o.id==="capacitor")!.shape="capacitor";
+circuit.objects.find(o=>o.id==="resistor")!.shape="resistor";
+circuit.objects.find(o=>o.id==="inductor")!.shape="inductor";
+circuit.connectors=[
+  {id:"wire_cr",kind:"rod",from:"-1.3,1,0",to:"-0.7,1,0"},
+  {id:"wire_rl",kind:"rod",from:"0.7,1,0",to:"1.3,1,0"},
+  {id:"wire_left",kind:"rod",from:"-2.7,1,0",to:"-3.2,1,0"},
+  {id:"wire_down_left",kind:"rod",from:"-3.2,1,0",to:"-3.2,-1,0"},
+  {id:"wire_bottom",kind:"rod",from:"-3.2,-1,0",to:"3.2,-1,0"},
+  {id:"wire_down_right",kind:"rod",from:"3.2,-1,0",to:"3.2,1,0"},
+  {id:"wire_right",kind:"rod",from:"3.2,1,0",to:"2.7,1,0"}
+];
+circuit.camera={position:[0,0,8],target:[0,-.5,0]};
 
 export const dragVelocity=(t:string)=>`m*g/c*(1-exp(-c*${t}/m))`;
 export const dragDistance=(t:string)=>`m*g/c*(${t}-m/c*(1-exp(-c*${t}/m)))`;

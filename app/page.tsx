@@ -5,7 +5,7 @@ import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
 import ExplanationVideo from "@/components/ExplanationVideo";
-import StepsPanel, { activeStepIndex, StepDetail } from "@/components/StepsPanel";
+import StepsPanel, { activeStepIndex } from "@/components/StepsPanel";
 import Timeline from "@/components/Timeline";
 import VariableSliders from "@/components/VariableSliders";
 import { compileScene } from "@/lib/expressions";
@@ -15,7 +15,7 @@ import { validateSceneScript } from "@/lib/validate";
 
 const SceneCanvas = dynamic(() => import("@/components/SceneCanvas"), {
   ssr: false,
-  loading: () => <div className="stage stage-loading">Loading the 3D board.</div>,
+  loading: () => <div className="nb-stage nb-stage-loading">Loading the 3D board.</div>,
 });
 
 interface Prepared {
@@ -76,6 +76,44 @@ function digits(step: number): number {
   return 2;
 }
 
+function IconProblem() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <path d="M5 3.5h7.5L16 7v9.5H5z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M12 3.5V7h3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M7.5 10.5h6M7.5 13.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconDerivation() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <path d="M4 6.5h12M4 10h8M4 13.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="15.5" cy="10" r="1.3" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconSimulation() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <rect x="3.5" y="3.5" width="13" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M8.4 7.4 13 10l-4.6 2.6z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function IconVariables() {
+  return (
+    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
+      <path d="M3.5 6.5h13M3.5 13.5h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="6.5" r="2.1" fill="#FCFBF8" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="13" cy="13.5" r="2.1" fill="#FCFBF8" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 export default function Page() {
   const [presetKey, setPresetKey] = useState<PresetKey>("projectile");
   const [scene, setScene] = useState<SceneScript>(() => presets.projectile);
@@ -101,6 +139,7 @@ export default function Page() {
   const [editBusy, setEditBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
+  const [problemOpen, setProblemOpen] = useState(false);
 
   const playingState = useRef(playing);
   playingState.current = playing;
@@ -333,6 +372,11 @@ export default function Page() {
     setNotice("The preset is back on the board. The numbers, the steps and the answers are unchanged.");
   }, [presetKey]);
 
+  const openProblem = useCallback(() => {
+    setProblemOpen(true);
+    requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
+  }, []);
+
   const handleSolved = useCallback((result: SolveResult) => {
     setSolution(result.solutionText);
     if (result.scene) {
@@ -345,7 +389,7 @@ export default function Page() {
       return;
     }
     setNotice(
-      "This answer has no scene Chalk can draw yet, so the board is unchanged. The solution is in the panel on the right and every preset still loads with no key of any kind.",
+      "This answer has no scene Chalk can draw yet, so the board is unchanged. The solution is in the notebook and every preset still loads with no key of any kind.",
     );
   }, []);
 
@@ -377,7 +421,7 @@ export default function Page() {
             : "The change is on the board, paused at the start.",
         );
       } else {
-        setNotice("That change could not be turned into a scene, so the board is unchanged. The reasoning is in the panel on the right.");
+        setNotice("That change could not be turned into a scene, so the board is unchanged.");
       }
       if (result.solutionText) setSolution(result.solutionText);
       setEditText("");
@@ -417,7 +461,7 @@ export default function Page() {
 
   const answerRows = (rows: number[]) =>
     (live?.answers ?? []).map((answer, position) => (
-      <div key={answer.question}>
+      <div className="nb-result" key={answer.question}>
         <dt>{answer.question}</dt>
         <dd className="num">
           {Number.isFinite(rows[position]) ? rows[position].toFixed(3) : "not available"}
@@ -427,81 +471,372 @@ export default function Page() {
     ));
 
   const answerList = (rows: number[] | null, heading: string) => (
-    <div className="answer-column">
-      <p className="compare-head">{heading}</p>
+    <div className="nb-answer-column">
+      <p className="nb-compare-head">{heading}</p>
       {rows === null ? (
-        <p className="muted">Hidden until you reveal the answer.</p>
+        <p className="nb-note">Hidden until you reveal the answer.</p>
       ) : (
-        <dl className="hud-list">{answerRows(rows)}</dl>
+        <dl className="nb-results">{answerRows(rows)}</dl>
       )}
     </div>
   );
 
   return (
-    <div className="shell">
-      <header className="masthead">
-        <div className="brand">
-          <p className="wordmark">Chalk</p>
-          <p className="tagline">Sketch a physics problem. Watch it move.</p>
+    <div className="nb-app">
+      <header className="nb-header">
+        <div className="nb-brand">
+          <span className="nb-wordmark">Chalk</span>
         </div>
-        <div className="masthead-right">
-          <a className="btn btn-quiet" href="#explanation">Explain</a>
-          <button className="btn btn-quiet" type="button" onClick={share}>Share</button>
+        <span className="nb-header-divider" aria-hidden="true" />
+        <div className="nb-crumbs">
+          <span className="nb-crumb">Physics notebook</span>
+          <span className="nb-topic">{live?.title ?? "Physics notebook"}</span>
+        </div>
+        <div className="nb-header-actions">
+          <button type="button" className="nb-btn nb-btn-ghost" onClick={openProblem}>
+            New page
+          </button>
+          <button type="button" className="nb-btn nb-btn-primary" onClick={share}>
+            Share
+          </button>
           <span className="share-status" role="status">{shareStatus}</span>
         </div>
       </header>
 
-      <div className="modebar">
-        <span className="mode-label">Simulate in 3D</span>
-        <button className="btn btn-quiet" type="button" aria-pressed={view === "video"} onClick={() => {setView("video");setPlaying(false);}}>Watch explanation</button>
-        <button className="btn btn-quiet" type="button" aria-pressed={view === "simulation"} onClick={() => setView("simulation")}>Interactive simulation</button>
-        <button className="btn btn-primary" type="button" onClick={() => document.getElementById("chalk-problem")?.focus()}>Give a problem</button>
-          <label className="field scene-picker">
-            <span>Scene</span>
-            <select value={presetKey} onChange={(event) => selectPreset(event.target.value as PresetKey)}>
+      <div className="nb-body">
+        <nav className="nb-rail" aria-label="Notebook sections">
+          <a className="nb-rail-item" href="#nb-problem" title="Problem">
+            <IconProblem />
+            <span className="nb-rail-label">Problem</span>
+          </a>
+          <a className="nb-rail-item" href="#nb-derivation" title="Derivation">
+            <IconDerivation />
+            <span className="nb-rail-label">Derivation</span>
+          </a>
+          <a className="nb-rail-item" href="#nb-simulation" title="Simulation">
+            <IconSimulation />
+            <span className="nb-rail-label">Simulation</span>
+          </a>
+          <a className="nb-rail-item" href="#nb-variables" title="Variables">
+            <IconVariables />
+            <span className="nb-rail-label">Variables</span>
+          </a>
+        </nav>
+
+        <aside className="nb-notebook" aria-label="Notebook">
+          <section className="nb-section" id="nb-problem">
+            <p className="nb-eyebrow">Experiment</p>
+            <h1 className="nb-title">{live?.title ?? "Physics problem"}</h1>
+            {live?.problemText ? <p className="nb-problem-text">{blurb}</p> : null}
+            <div className="nb-subhead">
+              <h3 className="nb-h3">Given</h3>
+              <button type="button" className="nb-link" onClick={openProblem}>
+                Give a problem
+              </button>
+            </div>
+            {live && live.variables.length > 0 ? (
+              <dl className="nb-givens">
+                {live.variables.map((variable) => (
+                  <div className="nb-given" key={variable.name}>
+                    <dt>{variable.label || variable.name}</dt>
+                    <dd className="num">
+                      {variable.value.toFixed(digits(variable.step))}
+                      {variable.unit ? ` ${variable.unit}` : ""}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              <p className="nb-note">This scene fixes every quantity.</p>
+            )}
+          </section>
+
+          <section className="nb-section" id="nb-derivation">
+            <div className="nb-subhead">
+              <h3 className="nb-h3">Derivation</h3>
+              <span className="nb-count">{steps.length} {steps.length === 1 ? "step" : "steps"}</span>
+            </div>
+            <p className="nb-note">Choose a step to jump the board to the moment it explains.</p>
+            <StepsPanel
+              steps={steps}
+              time={time}
+              selected={selected}
+              onSeek={seek}
+              onHighlight={highlightStep}
+            />
+          </section>
+
+          {live && compiled ? (
+            <section className="nb-section" aria-label="Calculated answers">
+              <div className="nb-answer">
+                <div className="nb-answer-eyebrow">
+                  <span>Answer</span>
+                  <span>{solution ? "Your problem" : "Preset"}</span>
+                </div>
+                <p className="nb-answer-question">{target?.question ?? live.title}</p>
+                <p className="nb-answer-big num">
+                  {answersHidden ? "?" : Number.isFinite(actual) ? actual.toFixed(3) : "…"}
+                  <span>{target?.unit ?? ""}</span>
+                </p>
+                <p className="nb-answer-model">
+                  {answersHidden ? "Make your prediction, then watch the scene unfold." : blurb}
+                </p>
+                {!answersHidden ? <dl className="nb-results">{answerRows(answers)}</dl> : null}
+              </div>
+            </section>
+          ) : null}
+
+          {predict ? (
+            <section className="nb-section">
+              <div className="nb-subhead">
+                <h3 className="nb-h3">Predict before you play</h3>
+                <button type="button" className="nb-link" onClick={togglePredict}>
+                  Hide
+                </button>
+              </div>
+              {target ? (
+                <>
+                  <p className="nb-question">{target.question}</p>
+                  <p className="nb-note">
+                    Give a number in {target.unit || "the unit of the question"}. Your number stays yours until you
+                    reveal the answer or the run finishes.
+                  </p>
+                  <label className="nb-field" htmlFor="prediction">
+                    <span>Your answer</span>
+                  </label>
+                  <input
+                    id="prediction"
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    className="nb-input num"
+                    value={guess}
+                    onChange={(event) => setGuess(event.target.value)}
+                  />
+                  <div className="nb-actions">
+                    <button
+                      type="button"
+                      className="nb-btn nb-btn-primary"
+                      disabled={!Number.isFinite(guessNumber) || canReveal}
+                      onClick={() => setRevealed(true)}
+                    >
+                      Reveal the answer
+                    </button>
+                    <button type="button" className="nb-btn nb-btn-ghost" onClick={resetPrediction}>
+                      Clear
+                    </button>
+                  </div>
+                  {!canReveal ? (
+                    <p className="nb-note">
+                      {finished
+                        ? "The run is over, so the answer can be revealed."
+                        : "The answer stays hidden until you reveal it or the run reaches the end."}
+                    </p>
+                  ) : null}
+                  {guessMissing ? (
+                    <p className="nb-warn" role="status">
+                      Enter a prediction before you press play, or reveal the answer first.
+                    </p>
+                  ) : null}
+                  {canReveal ? (
+                    <p className="nb-verdict">
+                      The board gives{" "}
+                      <b className="num">
+                        {Number.isFinite(actual) ? actual.toFixed(3) : "not available"} {target.unit}
+                      </b>
+                      .
+                      {!openGuess ? (
+                        " Enter a number above to compare it with the board."
+                      ) : close ? (
+                        <> Your {guessNumber} is inside 2 percent of it. Well judged.</>
+                      ) : (
+                        <>
+                          {" "}
+                          Yours was {guessNumber}, which is {Math.abs(guessNumber - actual).toFixed(3)} away. Play it
+                          again and watch which part of the motion decides it.
+                        </>
+                      )}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="nb-note">This scene has no finite answer to predict.</p>
+              )}
+            </section>
+          ) : null}
+
+          {compare ? (
+            <section className="nb-section">
+              <div className="nb-subhead">
+                <h3 className="nb-h3">Compare a change</h3>
+                <button type="button" className="nb-link" onClick={toggleCompare}>
+                  Close
+                </button>
+              </div>
+              {adjustable.length > 1 ? (
+                <label className="nb-field" htmlFor="compare-pick">
+                  <span>Quantity to change</span>
+                </label>
+              ) : null}
+              {adjustable.length > 1 ? (
+                <select
+                  id="compare-pick"
+                  className="nb-select"
+                  value={picked?.name ?? ""}
+                  onChange={(event) => setComparePick(event.target.value)}
+                >
+                  {adjustable.map((variable) => (
+                    <option key={variable.name} value={variable.name}>
+                      {variable.label || variable.name}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {picked ? (
+                <div className="nb-control">
+                  <label htmlFor="compare-value">
+                    <span>{picked.label || picked.name}</span>
+                    <span className="num">
+                      {(compareValues[picked.name] ?? picked.value).toFixed(digits(picked.step))}
+                      {picked.unit ? ` ${picked.unit}` : ""}
+                    </span>
+                  </label>
+                  <input
+                    id="compare-value"
+                    type="range"
+                    min={picked.min}
+                    max={picked.max}
+                    step={picked.step}
+                    value={compareValues[picked.name] ?? picked.value}
+                    onChange={(event) => applyCompareValue(picked.name, Number(event.target.value))}
+                  />
+                  <p className="nb-note">
+                    Original {(baseline?.[picked.name] ?? picked.value).toFixed(digits(picked.step))}
+                    {picked.unit ? ` ${picked.unit}` : ""}. Both boards run on the same clock and the same scene.
+                  </p>
+                </div>
+              ) : (
+                <p className="nb-note">This scene fixes every quantity, so there is nothing to compare.</p>
+              )}
+            </section>
+          ) : null}
+
+          <section className="nb-section" id="nb-compose">
+            <div className="nb-subhead">
+              <h3 className="nb-h3">Problem input</h3>
+              <button
+                type="button"
+                className="nb-link"
+                aria-expanded={problemOpen}
+                onClick={() => setProblemOpen((previous) => !previous)}
+              >
+                {problemOpen ? "Hide" : "Give a problem"}
+              </button>
+            </div>
+            <div hidden={!problemOpen}>
+              <InputPanel onSolved={handleSolved} />
+            </div>
+          </section>
+
+          <details className="nb-section nb-details">
+            <summary>Model and assumptions</summary>
+            {live?.problemText ? <p className="nb-solution">{live.problemText}</p> : null}
+            {solution ? <p className="nb-solution">{solution}</p> : null}
+            <p className="nb-note">
+              These boards use closed form ideal models chosen for the situation, and they are not a fluid or turbulence
+              simulation. A scene that passes every check is not a promise that its model fits the real world.
+            </p>
+          </details>
+
+          {notice ? (
+            <p className="nb-notice" role="status">
+              {notice}
+            </p>
+          ) : null}
+          {prepared.warnings.length > 0 ? (
+            <p className="nb-notice nb-warn" role="status">
+              Scene warnings: {prepared.warnings.join(" ")}
+            </p>
+          ) : null}
+          {editError ? (
+            <p className="nb-notice nb-warn" role="alert">
+              {editError}
+            </p>
+          ) : null}
+        </aside>
+
+        <main className="nb-workspace">
+          <div className="nb-toolbar">
+            <div className="nb-modes" role="group" aria-label="View mode">
+              <button
+                type="button"
+                className="nb-seg"
+                aria-pressed={view === "simulation"}
+                onClick={() => setView("simulation")}
+              >
+                Interactive simulation
+              </button>
+              <button
+                type="button"
+                className="nb-seg"
+                aria-pressed={view === "video"}
+                onClick={() => {
+                  setView("video");
+                  setPlaying(false);
+                }}
+              >
+                Watch explanation
+              </button>
+            </div>
+            <label className="nb-field nb-inline nb-scene-picker" htmlFor="scene-picker">
+              <span>Scene</span>
+            </label>
+            <select
+              id="scene-picker"
+              className="nb-select"
+              value={presetKey}
+              onChange={(event) => selectPreset(event.target.value as PresetKey)}
+            >
               {presetList.map((item) => (
                 <option key={item.key} value={item.key}>
                   {item.name}
                 </option>
               ))}
             </select>
-          </label>
-        <button type="button" className="btn btn-quiet" aria-pressed={compare} onClick={toggleCompare}>
-          {compare ? "Close the comparison" : "Compare a change"}
-        </button>
-        <button type="button" className="btn btn-quiet" aria-pressed={predict} onClick={togglePredict}>
-          {predict ? "Hide the prediction" : "Predict before you play"}
-        </button>
-        {selected !== null ? (
-          <button type="button" className="btn btn-quiet" onClick={() => setSelected(null)}>
-            Clear the highlight
-          </button>
-        ) : null}
-      </div>
+            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={compare} onClick={toggleCompare}>
+              {compare ? "Close comparison" : "Compare a change"}
+            </button>
+            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={predict} onClick={togglePredict}>
+              {predict ? "Hide prediction" : "Predict"}
+            </button>
+            {selected !== null ? (
+              <button type="button" className="nb-btn nb-btn-ghost" onClick={() => setSelected(null)}>
+                Clear highlight
+              </button>
+            ) : null}
+          </div>
 
-      <main className="workspace">
-        <div className="primary">
-          <div hidden={view !== "simulation"}>
-          {prepared.error || !live || !compiled ? (
-            <div className="stage">
-              <div className="board-fallback" role="alert">
-                <h2>This scene could not be prepared</h2>
-                <p>{prepared.error ?? "The scene script is not usable."}</p>
-                <p>
-                  A scene is only shown after every expression parses and every sampled value is finite, so nothing
-                  broken is ever drawn.
-                </p>
-                <button type="button" className="btn btn-primary" onClick={reloadPreset}>
-                  Reload the preset
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {compare ? (
-                <div className="stages">
-                  <figure className="stage-figure">
-                    <div className="stage" id="simulation">
+          <div className="nb-viewport">
+            <div className="nb-sim" hidden={view !== "simulation"}>
+              <span id="nb-simulation" className="nb-anchor" aria-hidden="true" />
+              {prepared.error || !live || !compiled ? (
+                <div className="nb-stage nb-stage-broken">
+                  <div className="nb-fallback" role="alert">
+                    <h2>This scene could not be prepared</h2>
+                    <p>{prepared.error ?? "The scene script is not usable."}</p>
+                    <p>
+                      A scene is only shown after every expression parses and every sampled value is finite, so nothing
+                      broken is ever drawn.
+                    </p>
+                    <button type="button" className="nb-btn nb-btn-primary" onClick={reloadPreset}>
+                      Reload the preset
+                    </button>
+                  </div>
+                </div>
+              ) : compare ? (
+                <div className="nb-compare">
+                  <figure className="nb-stage-figure">
+                    <div className="nb-stage" id="simulation">
                       <SceneCanvas
                         scene={live}
                         values={baseline ?? values}
@@ -517,10 +852,10 @@ export default function Page() {
                         highlight={highlight}
                       />
                     </div>
-                    <figcaption className="stage-caption">Original, the values as they were</figcaption>
+                    <figcaption className="nb-stage-caption">Original, the values as they were</figcaption>
                   </figure>
-                  <figure className="stage-figure">
-                    <div className="stage">
+                  <figure className="nb-stage-figure">
+                    <div className="nb-stage">
                       <SceneCanvas
                         scene={live}
                         values={compareValues}
@@ -537,11 +872,11 @@ export default function Page() {
                         highlight={highlight}
                       />
                     </div>
-                    <figcaption className="stage-caption">Changed, the same scene and the same clock</figcaption>
+                    <figcaption className="nb-stage-caption">Changed, the same scene and the same clock</figcaption>
                   </figure>
                 </div>
               ) : (
-                <div className="stage" id="simulation">
+                <div className="nb-stage" id="simulation">
                   <SceneCanvas
                     scene={live}
                     values={values}
@@ -556,7 +891,7 @@ export default function Page() {
                     sharedClock={sharedClock}
                     highlight={highlight}
                   />
-                  <div className="board-hint">Drag to orbit · Scroll to zoom</div>
+                  <div className="nb-stage-hint">Drag to orbit · Scroll to zoom</div>
                 </div>
               )}
 
@@ -579,231 +914,55 @@ export default function Page() {
               />
 
               {compare ? (
-                <section className="compare-strip">
+                <section className="nb-compare-strip">
                   {answerList(answersHidden ? null : baselineAnswers, "Original")}
                   {answerList(answersHidden ? null : compareAnswers, "Changed")}
                 </section>
               ) : null}
 
-              <StepDetail
-                step={step}
-                index={index}
-                highlighted={selected === index}
-                onHighlight={highlightStep}
-              />
-            </>
-          )}
-          </div>
-
-          {notice ? (
-            <p className="notice" role="status">
-              {notice}
-            </p>
-          ) : null}
-          <div hidden={view !== "video"}>{live && compiled ? <ExplanationVideo scene={live} values={values} solution={solution} /> : null}</div>
-          {prepared.warnings.length > 0 ? (
-            <p className="notice notice-warn" role="status">
-              Scene warnings: {prepared.warnings.join(" ")}
-            </p>
-          ) : null}
-          {editError ? (
-            <p className="notice notice-warn" role="alert">
-              {editError}
-            </p>
-          ) : null}
-        </div>
-
-        <aside className="inspector">
-          <section className="answer-paper" aria-label="Calculated answers">
-            <div className="answer-eyebrow"><span>Answer</span><span>{solution ? "Your problem" : "Preset"}</span></div>
-            <p className="answer-question">{target?.question ?? live?.title ?? "Physics problem"}</p>
-            <p className="answer-big num">{answersHidden ? "?" : Number.isFinite(actual) ? actual.toFixed(3) : "…"}<span>{target?.unit ?? ""}</span></p>
-            <p className="answer-model">{answersHidden ? "Make your prediction, then watch the scene unfold." : blurb}</p>
-            {!answersHidden ? <dl className="hud-list paper-results">{answerRows(answers)}</dl> : null}
-          </section>
-          <section className="panel">
-            <h2 className="panel-title">Ask for a problem</h2>
-            <InputPanel onSolved={handleSolved} />
-          </section>
-
-          <section className="panel">
-            <h2 className="panel-title">Change this scene</h2>
-            <label className="field field-stacked" htmlFor="edit-instruction">
-              <span>Instruction</span>
-              <textarea
-                id="edit-instruction"
-                rows={2}
-                maxLength={1000}
-                placeholder="make the ramp steeper"
-                value={editText}
-                onChange={(event) => setEditText(event.target.value)}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-primary btn-wide"
-              disabled={editBusy || editText.trim().length === 0}
-              onClick={runEdit}
-            >
-              {editBusy ? "Applying the change" : "Apply the change"}
-            </button>
-          </section>
-
-          {predict ? (
-            <section className="panel">
-              <h2 className="panel-title">Predict before you play</h2>
-              {target ? (
-                <>
-                  <p className="question">{target.question}</p>
-                  <p className="muted">
-                    Give a number in {target.unit || "the unit of the question"}. Your number stays yours until you
-                    reveal the answer or the run finishes.
-                  </p>
-                  <label className="field field-stacked" htmlFor="prediction">
-                    <span>Your answer</span>
-                    <input
-                      id="prediction"
-                      type="number"
-                      inputMode="decimal"
-                      step="any"
-                      className="number-input"
-                      value={guess}
-                      onChange={(event) => setGuess(event.target.value)}
-                    />
-                  </label>
-                  <div className="actions">
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      disabled={!Number.isFinite(guessNumber) || canReveal}
-                      onClick={() => setRevealed(true)}
-                    >
-                      Reveal the answer
-                    </button>
-                    <button type="button" className="btn" onClick={resetPrediction}>
-                      Clear
-                    </button>
-                  </div>
-                  {!canReveal ? (
-                    <p className="muted">
-                      {finished
-                        ? "The run is over, so the answer can be revealed."
-                        : "The answer stays hidden until you reveal it or the run reaches the end."}
-                    </p>
-                  ) : null}
-                  {guessMissing ? (
-                    <p className="notice notice-warn" role="status">
-                      Enter a prediction before you press play, or reveal the answer first.
-                    </p>
-                  ) : null}
-                  {canReveal ? (
-                    <p className="verdict">
-                      The board gives{" "}
-                      <b className="num">
-                        {Number.isFinite(actual) ? actual.toFixed(3) : "not available"} {target.unit}
-                      </b>
-                      .
-                      {!openGuess ? (
-                        " Enter a number above to compare it with the board."
-                      ) : close ? (
-                        <>
-                          {" "}
-                          Your {guessNumber} is inside 2 percent of it. Well judged.
-                        </>
-                      ) : (
-                        <>
-                          {" "}
-                          Yours was {guessNumber}, which is {Math.abs(guessNumber - actual).toFixed(3)} away. Play it
-                          again and watch which part of the motion decides it.
-                        </>
-                      )}
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <p className="muted">This scene has no finite answer to predict.</p>
-              )}
-            </section>
-          ) : null}
-
-          {compare ? (
-            <section className="panel">
-              <h2 className="panel-title">Compare a change</h2>
-              {adjustable.length > 1 ? (
-                <label className="field field-stacked" htmlFor="compare-pick">
-                  <span>Quantity to change</span>
-                  <select
-                    id="compare-pick"
-                    value={picked?.name ?? ""}
-                    onChange={(event) => setComparePick(event.target.value)}
-                  >
-                    {adjustable.map((variable) => (
-                      <option key={variable.name} value={variable.name}>
-                        {variable.label || variable.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              {picked ? (
-                <div className="control">
-                  <label htmlFor="compare-value">
-                    <span>{picked.label || picked.name}</span>
-                    <span className="num">
-                      {(compareValues[picked.name] ?? picked.value).toFixed(digits(picked.step))}
-                      {picked.unit ? ` ${picked.unit}` : ""}
-                    </span>
-                  </label>
-                  <input
-                    id="compare-value"
-                    type="range"
-                    min={picked.min}
-                    max={picked.max}
-                    step={picked.step}
-                    value={compareValues[picked.name] ?? picked.value}
-                    onChange={(event) => applyCompareValue(picked.name, Number(event.target.value))}
-                  />
-                  <p className="muted">
-                    Original {(baseline?.[picked.name] ?? picked.value).toFixed(digits(picked.step))}
-                    {picked.unit ? ` ${picked.unit}` : ""}. Both boards run on the same clock and the same scene.
-                  </p>
+              <section className="nb-section nb-params" id="nb-variables">
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">{compare ? "Changed variables" : "Variables"}</h3>
                 </div>
-              ) : (
-                <p className="muted">This scene fixes every quantity, so there is nothing to compare.</p>
-              )}
-            </section>
-          ) : null}
+                <VariableSliders
+                  variables={live?.variables ?? []}
+                  values={compare ? compareValues : values}
+                  onChange={changeValue}
+                />
+              </section>
 
-          <section className="panel">
-            <h2 className="panel-title">{compare ? "Changed variables" : "Variables"}</h2>
-            <VariableSliders
-              variables={live?.variables ?? []}
-              values={compare ? compareValues : values}
-              onChange={changeValue}
-            />
-            <p className="muted">
-              Moving a slider re-evaluates the closed form answer with no call to any service.
-              {compare ? " It moves the changed board, and the original keeps the values it was given." : ""}
-            </p>
-          </section>
+              <section className="nb-section nb-instruction">
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">Change this scene</h3>
+                </div>
+                <label className="nb-field" htmlFor="edit-instruction">
+                  <span>Instruction</span>
+                </label>
+                <textarea
+                  id="edit-instruction"
+                  rows={2}
+                  maxLength={1000}
+                  placeholder="make the ramp steeper"
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="nb-btn nb-btn-primary nb-btn-wide"
+                  disabled={editBusy || editText.trim().length === 0}
+                  onClick={runEdit}
+                >
+                  {editBusy ? "Applying the change" : "Apply the change"}
+                </button>
+              </section>
+            </div>
 
-          <section className="panel" id="explanation">
-            <h2 className="panel-title">Derivation</h2>
-            <p className="muted">Choose a step to jump the board to the moment it explains.</p>
-            <StepsPanel steps={steps} time={time} onSeek={seek} />
-          </section>
-
-          <details className="panel">
-            <summary>Model and assumptions</summary>
-            {live?.problemText ? <p className="solution">{live.problemText}</p> : null}
-            {solution ? <p className="solution">{solution}</p> : null}
-            <p className="muted">
-              These boards use closed form ideal models chosen for the situation, and they are not a fluid or turbulence
-              simulation. A scene that passes every check is not a promise that its model fits the real world.
-            </p>
-          </details>
-        </aside>
-      </main>
+            <div className="nb-video" hidden={view !== "video"}>
+              {live && compiled ? <ExplanationVideo scene={live} values={values} solution={solution} /> : null}
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

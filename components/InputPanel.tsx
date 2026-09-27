@@ -19,7 +19,7 @@ export interface InputPanelProps {
 const MAX_TEXT_CHARS = 6000;
 const MAX_EDGE_PX = 1600;
 const MAX_IMAGE_BYTES = 1.8 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 165_000;
+const REQUEST_TIMEOUT_MS = 600_000;
 const QUALITIES = [0.9, 0.82, 0.72, 0.6, 0.5];
 const WORKING_STATUS =
   "Reading your problem, calculating the answer, and building the 3D scene.";

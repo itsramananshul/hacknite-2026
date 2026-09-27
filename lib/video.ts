@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -61,7 +61,11 @@ export async function startVideo(raw:unknown,values:Record<string,number>,soluti
     active.delete(id);
     if(error) await writeFile(join(directory,"status.json"),JSON.stringify({status:"error",message:error}));
   };
-  const timer=setTimeout(()=>{child.kill();void finish("The video took longer than 10 minutes to render. Try a shorter explanation.");},600_000);
+  const timer=setTimeout(()=>{
+    if(process.platform==="win32" && child.pid) execFile("taskkill",["/PID",String(child.pid),"/T","/F"],{windowsHide:true},()=>{});
+    else child.kill();
+    void finish("The video took longer than 10 minutes to render. Try a shorter explanation.");
+  },600_000);
   child.on("error",error=>void finish(error.message));
   child.on("close",code=>void finish(code===0 ? undefined : `Video rendering failed. ${detail.slice(-700)}`));
   return {id,status:"rendering"};

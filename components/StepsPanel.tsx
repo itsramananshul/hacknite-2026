@@ -2,7 +2,7 @@
 
 import katex from "katex";
 import "katex/dist/katex.min.css";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SceneStep } from "@/lib/schema";
 
 const clamp = (value: number, low: number, high: number): number => Math.min(high, Math.max(low, value));
@@ -21,7 +21,7 @@ function Tex({ latex, display }: { latex: string; display: boolean }) {
       return katex.renderToString(latex, {
         displayMode: display,
         throwOnError: false,
-        errorColor: "#e8b49c",
+        errorColor: "#b3261e",
         strict: "ignore",
         trust: false,
       });
@@ -36,93 +36,94 @@ function Tex({ latex, display }: { latex: string; display: boolean }) {
   return <span className={display ? "tex tex-display" : "tex"} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-export function StepDetail({
-  step,
-  index,
-  highlighted,
-  onHighlight,
-}: {
-  step: SceneStep | null;
-  index: number;
-  highlighted: boolean;
-  onHighlight: (index: number) => void;
-}) {
-  if (!step) {
-    return (
-      <section className="step-detail" aria-live="polite">
-        <p className="muted">This scene has no narrated steps yet. The board, the timeline and the answers still work.</p>
-      </section>
-    );
-  }
+function Chevron() {
   return (
-    <section className="step-detail" aria-live="polite">
-      <p className="step-count">Step {index + 1}</p>
-      <h2 className="step-title">{step.title}</h2>
-      <p className="step-narration">{step.narration}</p>
-      {step.equations.length > 0 ? (
-        <div className="equations">
-          {step.equations.map((latex, position) => (
-            <button
-              key={`${index}-${position}`}
-              type="button"
-              className="equation"
-              aria-pressed={highlighted}
-              title="Highlight this step"
-              onClick={() => onHighlight(index)}
-            >
-              <Tex latex={latex} display />
-            </button>
-          ))}
-        </div>
-      ) : null}
-      <div className="step-actions">
-        <button
-          type="button"
-          className="btn btn-quiet"
-          aria-pressed={highlighted}
-          onClick={() => onHighlight(index)}
-        >
-          {highlighted ? "Step highlighted" : "Highlight this step"}
-        </button>
-        <p className="muted">
-          Choosing an equation or this button lights the objects and the arrows the scene author listed for this step.
-          Nothing here is guessed from the equation itself.
-        </p>
-      </div>
-    </section>
+    <svg className="nb-step-chevron" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path d="M4 6.5 8 10.5 12 6.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
 export default function StepsPanel({
   steps,
   time,
+  selected,
   onSeek,
+  onHighlight,
 }: {
   steps: SceneStep[];
   time: number;
+  selected: number | null;
   onSeek: (time: number) => void;
+  onHighlight: (index: number) => void;
 }) {
   const active = activeStepIndex(steps, time);
+  const [open, setOpen] = useState<number | null>(active >= 0 ? active : null);
+
+  useEffect(() => {
+    if (active >= 0) setOpen(active);
+  }, [active]);
+
   if (steps.length === 0) {
-    return <p className="muted">This scene has no steps to show.</p>;
+    return <p className="nb-note">This scene has no narrated steps yet. The board, the timeline and the answers still work.</p>;
   }
+
   return (
-    <ol className="steps-list">
+    <ol className="nb-steps">
       {steps.map((step, index) => {
         const isActive = index === active;
+        const isOpen = open === index;
+        const isHighlighted = selected === index;
         return (
-          <li key={`${step.title}-${step.tStart}`}>
+          <li
+            key={`${step.title}-${step.tStart}`}
+            className="nb-step"
+            data-active={isActive ? "true" : undefined}
+            data-open={isOpen ? "true" : undefined}
+          >
             <button
               type="button"
-              className="step-button"
+              className="nb-step-head"
+              aria-expanded={isOpen}
               aria-current={isActive ? "step" : undefined}
-              onClick={() => onSeek(clamp(step.tStart, 0, step.tEnd))}
+              onClick={() => {
+                setOpen(isOpen ? null : index);
+                onSeek(clamp(step.tStart, 0, step.tEnd));
+              }}
             >
-              <span className="step-span">
-                {step.tStart.toFixed(1)} s to {step.tEnd.toFixed(1)} s
-              </span>
-              <span className="step-name">{step.title}</span>
+              <span className="nb-step-num" aria-hidden="true">{index + 1}</span>
+              <span className="nb-step-title">{step.title}</span>
+              <Chevron />
             </button>
+            {isOpen ? (
+              <div className="nb-step-body">
+                <p className="nb-step-narration">{step.narration}</p>
+                {step.equations.length > 0 ? (
+                  <div className="nb-equations">
+                    {step.equations.map((latex, position) => (
+                      <button
+                        key={`${index}-${position}`}
+                        type="button"
+                        className="nb-equation"
+                        aria-pressed={isHighlighted}
+                        title="Highlight this step in the simulation"
+                        onClick={() => onHighlight(index)}
+                      >
+                        <Tex latex={latex} display />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="nb-highlight"
+                  aria-pressed={isHighlighted}
+                  onClick={() => onHighlight(index)}
+                >
+                  {isHighlighted ? "Highlighted in simulation" : "Highlight in simulation"}
+                </button>
+              </div>
+            ) : null}
           </li>
         );
       })}

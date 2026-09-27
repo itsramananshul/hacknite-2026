@@ -20,7 +20,8 @@ function ConnectorLine({ connector, sampleRef }: { connector: Connector; sampleR
   const start = useMemo(() => new THREE.Vector3(), []);
   const end = useMemo(() => new THREE.Vector3(), []);
   const point = useMemo(() => new THREE.Vector3(), []);
-  const seed = useMemo(() => [[0, 0, 0], [0, 0.001, 0]] as [number, number, number][], []);
+  // Allocate every segment before Three caches the instanced draw count.
+  const seed = useMemo(() => Array.from({length:count},(_,i)=>[0,i*.001,0] as [number,number,number]), [count]);
 
   useFrame(() => {
     const line = ref.current as LineHandle | null;
@@ -60,7 +61,7 @@ function ConnectorLine({ connector, sampleRef }: { connector: Connector; sampleR
     line.geometry.setPositions(points);
   });
 
-  return <Line ref={(node) => { ref.current = node; }} points={seed} color="#d4dfd7" lineWidth={connector.kind === "rod" ? 4 : 2} />;
+  return <Line ref={(node) => { ref.current = node; }} points={seed} color="#536579" lineWidth={connector.kind === "rod" ? 4 : 2} />;
 }
 
 export default function Connectors({ scene, sampleRef }: { scene: SceneScript; sampleRef: SampleRef }) {

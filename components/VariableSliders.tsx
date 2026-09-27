@@ -19,19 +19,19 @@ export default function VariableSliders({
 }) {
   const adjustable = variables.filter((variable) => variable.adjustable);
   if (adjustable.length === 0) {
-    return <p className="muted">This scene fixes every quantity, so there is nothing to sweep.</p>;
+    return <p className="nb-note">This scene fixes every quantity, so there is nothing to sweep.</p>;
   }
   return (
-    <div className="sliders">
+    <div className="nb-param-grid" data-count={adjustable.length}>
       {adjustable.map((variable) => {
         const id = `variable-${variable.name}`;
         const current = values[variable.name] ?? variable.value;
         const places = digits(variable.step);
         return (
-          <div className="control" key={variable.name}>
-            <label htmlFor={id}>
-              <span>{variable.label || variable.name}</span>
-              <span className="num">
+          <div className="nb-param" key={variable.name}>
+            <label className="nb-param-head" htmlFor={id}>
+              <span className="nb-param-label">{variable.label || variable.name}</span>
+              <span className="nb-param-value num">
                 {current.toFixed(places)}
                 {variable.unit ? ` ${variable.unit}` : ""}
               </span>

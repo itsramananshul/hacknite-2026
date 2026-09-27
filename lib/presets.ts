@@ -1195,3 +1195,4 @@ export const presets: Record<PresetKey, SceneScript> = {
   fluid: fluidPreset,
   wave: wavePreset,
 };
+wavePreset.connectors=Array.from({length:WAVE_SPHERE_COUNT-1},(_,i)=>({id:`string${i}`,kind:"rope" as const,from:`node${i}`,to:`node${i+1}`}));

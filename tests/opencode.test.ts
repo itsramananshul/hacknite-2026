@@ -2,6 +2,31 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { evaluateAnswerExpression, readSolveOutput, runOpenCodePipeline, readOpenCodeConfig } from "../lib/opencode";
 import { solverProvider } from "../lib/solver";
+import {presets} from '../lib/presets';
+import {compileScene} from '../lib/expressions';
+
+test('a stationary scene claiming motion is repaired before it is displayed',async()=>{
+  const good=presets.projectile;
+  const stationary=structuredClone(good);
+  for(const object of stationary.objects) object.position={x:'0',y:'0',z:'0'};
+  const values=compileScene(good).answerValues();
+  let messages=0;let repair='';
+  const transport:typeof fetch=async(url,init)=>{
+    const path=new URL(String(url)).pathname;
+    if(path==='/experimental/tool/ids') return Response.json([]);
+    if(path==='/session') return Response.json({id:'stationary-test'});
+    if(path.endsWith('/message')) {
+      const body=JSON.parse(String(init?.body));
+      const content=messages===0?{solutionText:'Projectile solution',answers:good.answers.map((a,i)=>({question:a.question,expression:String(values[i]),unit:a.unit}))}:messages===1?stationary:good;
+      if(messages===2) repair=body.parts[0].text;
+      messages++;
+      return Response.json({info:{},parts:[{type:'text',text:JSON.stringify(content)}]});
+    }
+    return Response.json(true);
+  };
+  const result=await runOpenCodePipeline({problemText:good.problemText,image:null},{env:{},fetchImpl:transport});
+  assert.ok(result.scene);assert.equal(messages,3);assert.match(repair,/position is constant|positions? is constant|position.*constant/);assert.ok(result.scene.objects.some(o=>Object.values(o.position).some(p=>/\bt\b/.test(p))));
+});
 
 test("answer numbers come from expressions, not model claims", () => {
   const output = readSolveOutput(JSON.stringify({solutionText:"Free fall",answers:[{question:"Fall time",expression:"sqrt(2*5/9.81)",unit:"s",value:999}]}));

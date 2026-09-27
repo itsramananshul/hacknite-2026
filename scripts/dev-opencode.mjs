@@ -3,11 +3,14 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { createConnection } from "node:net";
 
+if (existsSync(".env.local")) process.loadEnvFile(".env.local");
+
 const serverUrl = new URL(process.env.OPENCODE_SERVER_URL || "http://127.0.0.1:4098");
 if (serverUrl.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(serverUrl.hostname)) {
   throw new Error("The OpenCode development server must use a local HTTP address.");
 }
 const port = Number(process.env.PORT || 3000);
+const appHost = process.env.CHALK_HOST || "127.0.0.1";
 const appUrl = `http://127.0.0.1:${port}`;
 const children = [];
 const nextEnv = {
@@ -15,8 +18,8 @@ const nextEnv = {
   CHALK_SOLVER: "opencode",
   OPENCODE_SERVER_URL: serverUrl.origin,
   OPENCODE_PROVIDER_ID: process.env.OPENCODE_PROVIDER_ID || "opencode-go",
-  OPENCODE_MODEL: process.env.OPENCODE_MODEL || "deepseek-v4-flash",
-  OPENCODE_VISION_MODEL: process.env.OPENCODE_VISION_MODEL || "kimi-k2.6",
+  OPENCODE_MODEL: process.env.OPENCODE_MODEL || "deepseek-v4.1-flash",
+  OPENCODE_VISION_MODEL: process.env.OPENCODE_VISION_MODEL || "deepseek-v4.1-flash",
 };
 async function health() {
   try {
@@ -71,7 +74,7 @@ if (await appListening()) {
     if (children.length) console.log("Keep this terminal open for the local model server.");
     else process.exit(0);
 } else {
-  const next = launch(process.execPath, [join("node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", "127.0.0.1", "--port", String(port)], nextEnv);
+  const next = launch(process.execPath, [join("node_modules", "next", "dist", "bin", "next"), "dev", "--hostname", appHost, "--port", String(port)], nextEnv);
   next.on("exit", code => shutdown(code || 0));
   console.log(`Starting Chalk at ${appUrl}.`);
 }

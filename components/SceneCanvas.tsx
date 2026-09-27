@@ -9,6 +9,7 @@ import { compileScene } from "@/lib/expressions";
 import Connectors from "./Connectors";
 import SceneObjects, { type CompiledSceneApi, type SampleRef, type TimeRef } from "./SceneObjects";
 import Vectors from "./Vectors";
+import {LabelLayout,type LabelBox} from "./LabelLayout";
 
 export interface Shot {
   position: [number, number, number];
@@ -237,6 +238,7 @@ export default function SceneCanvas({
     return [variable.name, value];
   })), [scene, values]);
   const sampleRef = useRef<null>(null) as SampleRef;
+  const labelBoxes=useRef<LabelBox[]>([]);
   const timeRef = useRef(0) as TimeRef;
   const loopRef = useRef(scene.loop);
   loopRef.current = scene.loop;
@@ -259,7 +261,7 @@ export default function SceneCanvas({
         gl={{ antialias: true, alpha: false }}
         camera={{ position: scene.camera.position, fov: 42, near: 0.05, far: 800 }}
         onCreated={({ gl }) => {
-          gl.setClearColor("#17362E", 1);
+          gl.setClearColor("#DCE1E5", 1);
         }}
       >
         <Driver
@@ -280,7 +282,7 @@ export default function SceneCanvas({
           follower={follower}
         />
         <ambientLight intensity={0.6} color="#d7ebe1" />
-        <hemisphereLight intensity={0.34} color="#e2f3ea" groundColor="#0b1211" />
+        <hemisphereLight intensity={0.34} color="#e2f3ea" groundColor="#788895" />
         <directionalLight
           castShadow
           position={[12, 18, 9]}
@@ -303,10 +305,10 @@ export default function SceneCanvas({
             args={[160, 160]}
             cellSize={1}
             cellThickness={0.5}
-            cellColor="#25332d"
+            cellColor="#B6BFC8"
             sectionSize={5}
             sectionThickness={1}
-            sectionColor="#31493d"
+            sectionColor="#99A5B2"
             fadeDistance={72}
             fadeStrength={1.5}
             infiniteGrid
@@ -316,6 +318,7 @@ export default function SceneCanvas({
           <planeGeometry args={[200, 200]} />
           <shadowMaterial transparent opacity={0.26} />
         </mesh>
+        <LabelLayout.Provider value={labelBoxes}>
         <SceneObjects
           scene={scene}
           compiled={compiled}
@@ -326,6 +329,7 @@ export default function SceneCanvas({
         />
         <Connectors scene={scene} sampleRef={sampleRef} />
         <Vectors vectors={scene.vectors} sampleRef={sampleRef} timeRef={timeRef} only={highlight ? highlight.vectors : null} />
+        </LabelLayout.Provider>
         <OrbitControls
           makeDefault
           target={scene.camera.target}
