@@ -384,7 +384,7 @@ export default function Page() {
   const finished = time >= duration - 1e-3;
   const canReveal = revealed || finished;
   const answersHidden = predict && !canReveal;
-  const guessMissing = predict && !canReveal && !Number.isFinite(guessNumber);
+  const guessMissing = predict && leftView==="prediction" && !libraryOpen && !accountOpen && !canReveal && !Number.isFinite(guessNumber);
 
   const [narrationReady, setNarrationReady] = useState(false);
   useEffect(() => {
