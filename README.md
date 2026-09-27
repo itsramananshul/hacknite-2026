@@ -2,7 +2,7 @@
 
 <p align="center"><img src="public/brand/chalk-logo.png" alt="Chalk logo" width="120" /></p>
 
-An interactive science and mathematics notebook by Anshul Raman. Give it a numerical or symbolic problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+An interactive science and mathematics notebook by Anshul Raman and Jayrajsinh Gohil. Give it a numerical or symbolic problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
 
 The interface follows the supplied notebook design: white surfaces, navy sans-serif text, blue controls, compact navigation, and a light 3D viewport. Exact-value inputs complement the sliders; playback stays below the scene.
 
