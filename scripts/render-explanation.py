@@ -40,6 +40,7 @@ def paragraph(text, width=62, size=23, color=CREAM, max_width=12):
     return result
 
 ALLOWED_TEX = set("frac sqrt sin cos tan theta omega alpha beta gamma delta Delta pi exp log ln dot ddot text mathrm left right cdot times vec tau mu rho epsilon phi sigma int sum infty leq geq partial begin end aligned cases quad qquad max min approx lambda nu eta kappa nabla pm degree percent dfrac tfrac overline hat underbrace rightarrow leftarrow leftrightarrow rightleftharpoons".split())
+ALLOWED_TEX.update("equiv to Rightarrow Leftarrow Leftrightarrow xrightarrow xleftarrow ddagger dagger lim limits operatorname mathbb mathbf mathcal boldsymbol displaystyle prod sim simeq neq ne lt gt le ge in notin subset subseteq supset supseteq forall exists bmod mod ell varepsilon varphi vartheta Gamma Theta Lambda Xi Pi Sigma Upsilon Phi Psi Omega psi zeta chi iota omicron delta dots ldots cdots vdots ddots perp parallel circ angle infinity determinant det abs lvert rvert lVert rVert overset underset overbrace underline boxed pm mp cup cap emptyset Re Im sin cos tan cot sec csc sinh cosh tanh arcsin arccos arctan".split())
 def equation(source):
     # TeX commands outside this mathematical vocabulary are never compiled.
     commands = re.findall(r"\\([A-Za-z]+)", source)
