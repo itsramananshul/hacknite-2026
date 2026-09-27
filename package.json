@@ -11,10 +11,13 @@
     "test": "tsx --test tests/physics.test.ts"
   },
   "dependencies": {
+    "@google/genai": "^2.24.0",
+    "lz-string": "^1.5.0",
     "matter-js": "^0.20.0",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "tldraw": "^5.4.2",
     "zod": "^4.0.0"
   },
   "devDependencies": {
