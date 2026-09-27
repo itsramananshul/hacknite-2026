@@ -14,6 +14,7 @@ import {readSolveStream} from "@/lib/solve-stream";
 export type { SolveResult };
 
 export interface InputPanelProps {
+  initialProblemText?: string;
   onStarted: (problemText: string) => string;
   onAnswers: (result: Omit<SolveResult,"scene">, pageId: string) => void;
   onFailed: (message: string, pageId: string) => void;
@@ -94,8 +95,8 @@ async function readFailure(response: Response): Promise<string> {
   return `The service answered ${response.status} without a reason. Try again.`;
 }
 
-export default function InputPanel({ onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
-  const [problemText, setProblemText] = useState("");
+export default function InputPanel({ initialProblemText = "", onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
+  const [problemText, setProblemText] = useState(initialProblemText);
   const [image, setImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

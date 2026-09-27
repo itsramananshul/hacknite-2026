@@ -123,6 +123,7 @@ export default function Page() {
     answers:Omit<SolveResult,"scene">|null; error:string|null;
   }|null>(null);
   const activeQuestion = useRef<string|null>(null);
+  const [restoredInput,setRestoredInput] = useState({version:0,text:""});
   useEffect(()=>{
     const restore=()=>{
       const id=new URL(window.location.href).searchParams.get("page");
@@ -133,6 +134,7 @@ export default function Page() {
           setScene(presets.projectile);
           setSolution("");
           setPlaying(false);
+          setRestoredInput(previous=>({version:previous.version+1,text:""}));
         }
         return;
       }
@@ -153,6 +155,12 @@ export default function Page() {
         setCompare(false);
         setPredict(false);
         setView("simulation");
+        setNotice(null);
+        setEditError(null);
+        setSelected(null);
+        setShareUrl("");
+        setShareStatus("");
+        setRestoredInput(previous=>({version:previous.version+1,text:saved.questionPage.problemText}));
       } catch { /* A missing or invalid saved page never replaces the current scene. */ }
     };
     restore();
@@ -688,11 +696,11 @@ export default function Page() {
           </section> : null}
 
           {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution">
-            <h3 className="nb-h3">{questionPage.answers ? "Calculated answers" : "Solving your problem"}</h3>
+            <h3 className="nb-h3">{questionPage.answers ? "Calculated answers" : questionPage.status==="error" ? "Could not solve this problem" : "Solving your problem"}</h3>
             {questionPage.answers ? <>
               <dl className="nb-results">{questionPage.answers.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
               <p className="nb-solution">{questionPage.answers.solutionText}</p>
-            </> : <p className="nb-note" role="status">Calculating the answer for this new page…</p>}
+            </> : <p className="nb-note" role="status">{questionPage.error ?? "Calculating the answer for this new page…"}</p>}
           </section> : null}
 
           {live && compiled ? (
@@ -863,7 +871,7 @@ export default function Page() {
               </button>
             </div>
             <div hidden={!problemOpen}>
-              <InputPanel onStarted={handleStarted} onAnswers={handleAnswers} onFailed={handleFailed} onSolved={handleSolved} />
+              <InputPanel key={restoredInput.version} initialProblemText={restoredInput.text} onStarted={handleStarted} onAnswers={handleAnswers} onFailed={handleFailed} onSolved={handleSolved} />
             </div>
           </section>
 
