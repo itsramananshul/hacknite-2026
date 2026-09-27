@@ -5,6 +5,7 @@ import {videoWorkflow} from "./video-workflow";
 import {videoPayload} from "./video";
 import {RouteError} from "./gemini";
 import {Sandbox} from "@vercel/sandbox";
+import {cloudVideoStatus} from "./cloud-video-status";
 
 export function videoClient(token:string){return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!,process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}});}
 export async function startHostedVideo(client:SupabaseClient,userId:string,scene:unknown,values:Record<string,number>,solution:string){
@@ -24,11 +25,15 @@ export async function startHostedVideo(client:SupabaseClient,userId:string,scene
     return {id,status:"rendering"};
   }catch(error){await client.from("video_jobs").update({status:"error",message:"Cloud video generation could not start. Please retry."}).eq("user_id",userId).eq("id",id);throw error;}
 }
-export async function hostedVideoStatus(client:SupabaseClient,userId:string,id:string){
+export async function hostedVideoStatus(client:SupabaseClient,userId:string,id:string,token?:string){
   if(!/^[a-f0-9-]{36}$/.test(id))throw new RouteError(400,"invalid_video","Invalid video identifier.");
   const {data,error}=await client.from("video_jobs").select("status,message,narration,run_id,object_path").eq("user_id",userId).eq("id",id).maybeSingle();
   if(error)throw new Error(error.message);
   if(!data)throw new RouteError(404,"video_missing","This video is not available in your account.");
+  if(!process.env.VERCEL && data.status==="rendering" && data.run_id){
+    if(!token)throw new RouteError(401,"sign_in_required","Sign in to check this cloud video.");
+    return {...data,...await cloudVideoStatus(id,token)};
+  }
   if(data.status==="rendering" && data.run_id){
     const run=getRun<{status:string;message:string;narration?:boolean}>(data.run_id);
     const state=await run.status;

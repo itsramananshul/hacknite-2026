@@ -13,7 +13,7 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
     let local=false;
     if(!process.env.VERCEL){try{await requireVideoOwner(id,user.id);local=true;}catch(error){if(!(error instanceof RouteError) || error.status!==404)throw error;}}
     if(!local){
-      const client=videoClient(token);const job=await hostedVideoStatus(client,user.id,id);
+      const client=videoClient(token);const job=await hostedVideoStatus(client,user.id,id,token);
       if(job.status!=="ready")throw new RouteError(409,"video_pending","The video is still rendering.");
       const download=new URL(request.url).searchParams.has("download");
       const signed=await client.storage.from("chalk-videos").createSignedUrl(job.object_path,3600,download?{download:"Chalk-explanation.mp4"}:undefined);

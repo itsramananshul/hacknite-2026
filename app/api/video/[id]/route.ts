@@ -9,7 +9,7 @@ export async function GET(request:Request,context:{params:Promise<{id:string}>})
   try {const {user,token}=await requireUser(request);const {id}=await context.params;
     let local=false;
     if(!process.env.VERCEL){try{await requireVideoOwner(id,user.id);local=true;}catch(error){if(!(error instanceof RouteError) || error.status!==404)throw error;}}
-    if(!local){const job=await hostedVideoStatus(videoClient(token),user.id,id);return Response.json({status:job.status,message:job.message,narration:job.narration},{headers:{"Cache-Control":"no-store"}});}
+    if(!local){const job=await hostedVideoStatus(videoClient(token),user.id,id,token);return Response.json({status:job.status,message:job.message,narration:job.narration},{headers:{"Cache-Control":"no-store"}});}
     const status=await videoStatus(id);
     if(status.status==="ready"){
       try{await syncLocalVideo(videoClient(token),user.id,id);}catch{status.message="Video ready on this computer. Cloud upload will retry when you open it again.";}

@@ -20,6 +20,7 @@ import Timeline from "@/components/Timeline";
 import UiIcon from "@/components/UiIcon";
 import {keepSimulation,type SimulationVersion} from "@/lib/simulation-history";
 import {sceneShareLink} from "@/lib/share-link";
+import {removeSavedVideo} from "@/lib/video-reference";
 import {editQuestionMetadata} from "@/lib/question-metadata";
 import {withParameterRanges} from "@/lib/parameter-ranges";
 import {motionPresentation} from "@/lib/motion-presentation";
@@ -165,6 +166,7 @@ export default function Page() {
     setRestoredInput(previous=>({version:previous.version+1,text:""}));
     const restore=(preserveView=false)=>{
       if(!alive)return;
+      if(!preserveView)setView(new URL(window.location.href).searchParams.get("view")==="explanation"?"video":"simulation");
       if(new URLSearchParams(window.location.hash.slice(1)).has("scene"))return;
       const id=new URL(window.location.href).searchParams.get("page");
       if(!id){
@@ -187,7 +189,7 @@ export default function Page() {
         setValues(restoredValues);
         setQuestionPage(saved.questionPage);
         setScene(restoredScene);setSolution(typeof saved.solution==="string" ? saved.solution : "");setPlaying(false);
-        if(!preserveView){setPredict(false);setView("simulation");setSelected(null);setShareUrl("");setShareStatus("");}
+        if(!preserveView){setPredict(false);setSelected(null);setShareUrl("");setShareStatus("");}
         setNotice(null);setEditError(null);
         setRestoredInput(previous=>({version:previous.version+1,text:saved.questionPage.problemText}));
       } catch {setStorageError("This saved page could not be opened.");}
@@ -288,6 +290,13 @@ export default function Page() {
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [view, setView] = useState<"simulation" | "video">("simulation");
+  useEffect(()=>{
+    if(!libraryReady)return;
+    const url=new URL(window.location.href);
+    if(view==="video")url.searchParams.set("view","explanation");
+    else url.searchParams.delete("view");
+    window.history.replaceState(window.history.state,"",url);
+  },[view,libraryReady]);
   const [speed, setSpeed] = useState(1);
   const [muted, setMuted] = useState(true);
   const [shots, setShots] = useState(true);
@@ -1196,7 +1205,7 @@ export default function Page() {
             </div>
 
             <div className="nb-video" hidden={view !== "video"}>
-              {live && compiled ? <ExplanationVideo key={questionPage?.id ?? "preset"} scene={withParameterRanges(live,values)} values={values} solution={solution} savedJob={questionPage?.video} savedVideos={questionPage?.videoHistory} onJob={video=>{const id=questionPage?.id;if(id)setQuestionPage(previous=>previous?.id===id ? {...previous,video,videoHistory:[...(previous.videoHistory ?? (previous.video?[previous.video]:[])).filter(saved=>saved.id!==video.id),video],simulations:previous.simulations?.map(saved=>saved.id===previous.selectedSimulation ? {...saved,video}:saved)} : previous);}} /> : null}
+              {live && compiled ? <ExplanationVideo active={view==="video"} onDelete={id=>setQuestionPage(previous=>previous?removeSavedVideo(previous,id):previous)} key={questionPage?.id ?? "preset"} scene={withParameterRanges(live,values)} values={values} solution={solution} savedJob={questionPage?.video} savedVideos={questionPage?.videoHistory} onJob={video=>{const id=questionPage?.id;if(id)setQuestionPage(previous=>previous?.id===id ? {...previous,video,videoHistory:[...(previous.videoHistory ?? (previous.video?[previous.video]:[])).filter(saved=>saved.id!==video.id),video],simulations:previous.simulations?.map(saved=>saved.id===previous.selectedSimulation ? {...saved,video}:saved)} : previous);}} /> : null}
             </div>
           </div>
           {view==="simulation" ? <div className="nb-playback">{live ? <Timeline
