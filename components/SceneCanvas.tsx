@@ -27,6 +27,7 @@ export interface SceneCanvasProps {
   playing: boolean;
   time: number;
   speed: number;
+  restart?: number;
   onTime: (time: number) => void;
   onComplete: () => void;
   shot: Shot | null;
@@ -95,6 +96,7 @@ function Driver({
   timeRef,
   sharedClock,
   follower,
+  restart,
 }: {
   compiled: CompiledSceneApi;
   duration: number;
@@ -111,6 +113,7 @@ function Driver({
   timeRef: TimeRef;
   sharedClock: React.MutableRefObject<number>;
   follower: boolean;
+  restart: number;
 }) {
   const controls = useThree((state) => state.controls) as
     | { target: THREE.Vector3; update: () => void }
@@ -154,7 +157,7 @@ function Driver({
     sampleRef.current = null;
     clock.current = 0;
     ended.current = false;
-  }, [compiled, sampleRef]);
+  }, [compiled, sampleRef, restart]);
 
   useFrame((state, delta) => {
     const gap = Math.min(delta, FRAME_GAP_CAP);
@@ -229,6 +232,7 @@ export default function SceneCanvas({
   follower = false,
   highlight = null,
   onLoop,
+  restart = 0,
 }: SceneCanvasProps) {
   const [supported, setSupported] = useState<boolean | null>(null);
   const compiled = useMemo(() => compileScene(scene), [scene]);
@@ -280,6 +284,7 @@ export default function SceneCanvas({
           timeRef={timeRef}
           sharedClock={sharedClock}
           follower={follower}
+          restart={restart}
         />
         <ambientLight intensity={0.6} color="#d7ebe1" />
         <hemisphereLight intensity={0.34} color="#e2f3ea" groundColor="#788895" />

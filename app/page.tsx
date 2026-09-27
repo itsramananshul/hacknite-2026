@@ -10,7 +10,7 @@ import Timeline from "@/components/Timeline";
 import VariableSliders from "@/components/VariableSliders";
 import { compileScene } from "@/lib/expressions";
 import { presetList, presets, type PresetKey } from "@/lib/presets";
-import type { SceneScript, SceneVariable } from "@/lib/schema";
+import type { SceneScript } from "@/lib/schema";
 import { validateSceneScript } from "@/lib/validate";
 
 const SceneCanvas = dynamic(() => import("@/components/SceneCanvas"), {
@@ -184,7 +184,8 @@ export default function Page() {
   const [compare, setCompare] = useState(false);
   const [baseline, setBaseline] = useState<Record<string, number> | null>(null);
   const [compareValues, setCompareValues] = useState<Record<string, number>>({});
-  const [comparePick, setComparePick] = useState("");
+  const [leftView,setLeftView] = useState<"problem"|"derivation"|"simulation"|"variables">("problem");
+  const [playbackRevision,setPlaybackRevision] = useState(0);
   const [predict, setPredict] = useState(false);
   const [guess, setGuess] = useState("");
   const [revealed, setRevealed] = useState(false);
@@ -389,7 +390,10 @@ export default function Page() {
         setValues((previous) => ({ ...previous, [name]: value }));
       }
       setTime(0);
-      setPlaying(false);
+      sharedClock.current=0;
+      setPlaybackRevision(previous=>previous+1);
+      setManual(false);
+      setPlaying(true);
       resetPrediction();
     },
     [compare, resetPrediction],
@@ -399,7 +403,10 @@ export default function Page() {
     (name: string, value: number) => {
       setCompareValues((previous) => ({ ...previous, [name]: value }));
       setTime(0);
-      setPlaying(false);
+      sharedClock.current=0;
+      setPlaybackRevision(previous=>previous+1);
+      setManual(false);
+      setPlaying(true);
       resetPrediction();
     },
     [resetPrediction],
@@ -413,7 +420,10 @@ export default function Page() {
     }
     setBaseline(values);
     setCompareValues(values);
-    setComparePick(adjustable[0]?.name ?? "");
+    setPredict(false);
+    setSelected(null);
+    setView("simulation");
+    document.querySelector(".nb-notebook")?.scrollTo({top:0});
     setCompare(true);
   }, [compare, values, adjustable]);
 
@@ -446,6 +456,8 @@ export default function Page() {
   }, [presetKey]);
 
   const openProblem = useCallback(() => {
+    setLeftView("problem");
+    setCompare(false);
     setProblemOpen(true);
     requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
   }, []);
@@ -453,6 +465,7 @@ export default function Page() {
   const handleStarted = useCallback((problemText:string) => {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
     activeQuestion.current=id;
+    setLeftView("problem");
     setQuestionPage({id,problemText,status:"solving",answers:null,error:null});
     setScene(null);
     setSolution("");
@@ -557,7 +570,7 @@ export default function Page() {
     presetList.find((item) => item.key === presetKey)?.blurb ||
     "Explore a projectile launched from a cliff.";
 
-  const picked: SceneVariable | null = adjustable.find((item) => item.name === comparePick) ?? adjustable[0] ?? null;
+
 
   const share = async () => {
     if (!live || !compiled) return;
@@ -610,7 +623,7 @@ export default function Page() {
   );
 
   return (
-    <div className="nb-app">
+    <div className={`nb-app${compare ? " nb-comparing" : ""}`}>
       <header className="nb-header">
         <div className="nb-brand">
           <span className="nb-wordmark">Chalk</span>
@@ -634,26 +647,26 @@ export default function Page() {
 
       <div className="nb-body">
         <nav className="nb-rail" aria-label="Notebook sections">
-          <a className="nb-rail-item" href="#nb-problem" title="Problem">
+          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={!compare && leftView==="problem"} onClick={()=>{setLeftView("problem");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconProblem />
             <span className="nb-rail-label">Problem</span>
-          </a>
-          <a className="nb-rail-item" href="#nb-derivation" title="Derivation">
+          </button>
+          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={!compare && leftView==="derivation"} onClick={()=>{setLeftView("derivation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconDerivation />
             <span className="nb-rail-label">Derivation</span>
-          </a>
-          <a className="nb-rail-item" href="#nb-simulation" title="Simulation">
+          </button>
+          <button type="button" className="nb-rail-item" title="Simulation" aria-pressed={!compare && leftView==="simulation"} onClick={()=>{setLeftView("simulation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconSimulation />
             <span className="nb-rail-label">Simulation</span>
-          </a>
-          <a className="nb-rail-item" href="#nb-variables" title="Variables">
+          </button>
+          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={!compare && leftView==="variables"} onClick={()=>{setLeftView("variables");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconVariables />
             <span className="nb-rail-label">Variables</span>
-          </a>
+          </button>
         </nav>
 
         <aside className="nb-notebook" aria-label="Notebook">
-          <section className="nb-section" id="nb-problem">
+          <section className="nb-section" id="nb-problem" hidden={compare || leftView!=="problem"}>
             <p className="nb-eyebrow">Experiment</p>
             <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{live?.title ?? "New physics problem"}</h1>
             {live?.problemText || questionPage ? <p className="nb-problem-text">{blurb}</p> : null}
@@ -680,7 +693,7 @@ export default function Page() {
             )}
           </section>
 
-          {live ? <section className="nb-section" id="nb-derivation">
+          {live ? <section className="nb-section" id="nb-derivation" hidden={compare || leftView!=="derivation"}>
             <div className="nb-subhead">
               <h3 className="nb-h3">Derivation</h3>
               <span className="nb-count">{steps.length} {steps.length === 1 ? "step" : "steps"}</span>
@@ -695,7 +708,7 @@ export default function Page() {
             />
           </section> : null}
 
-          {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution">
+          {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution" hidden={compare || leftView!=="problem"}>
             <h3 className="nb-h3">{questionPage.answers ? "Calculated answers" : questionPage.status==="error" ? "Could not solve this problem" : "Solving your problem"}</h3>
             {questionPage.answers ? <>
               <dl className="nb-results">{questionPage.answers.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
@@ -704,7 +717,7 @@ export default function Page() {
           </section> : null}
 
           {live && compiled ? (
-            <section className="nb-section" aria-label="Calculated answers">
+            <section className="nb-section" aria-label="Calculated answers" hidden={compare || leftView!=="problem"}>
               <div className="nb-answer">
                 <div className="nb-answer-eyebrow">
                   <span>Answer</span>
@@ -723,7 +736,7 @@ export default function Page() {
             </section>
           ) : null}
 
-          {predict ? (
+          {predict && !compare && leftView==="simulation" ? (
             <section className="nb-section">
               <div className="nb-subhead">
                 <h3 className="nb-h3">Predict before you play</h3>
@@ -810,55 +823,16 @@ export default function Page() {
                   Close
                 </button>
               </div>
-              {adjustable.length > 1 ? (
-                <label className="nb-field" htmlFor="compare-pick">
-                  <span>Quantity to change</span>
-                </label>
-              ) : null}
-              {adjustable.length > 1 ? (
-                <select
-                  id="compare-pick"
-                  className="nb-select"
-                  value={picked?.name ?? ""}
-                  onChange={(event) => setComparePick(event.target.value)}
-                >
-                  {adjustable.map((variable) => (
-                    <option key={variable.name} value={variable.name}>
-                      {variable.label || variable.name}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-              {picked ? (
-                <div className="nb-control">
-                  <label htmlFor="compare-value">
-                    <span>{picked.label || picked.name}</span>
-                    <span className="num">
-                      {(compareValues[picked.name] ?? picked.value).toFixed(digits(picked.step))}
-                      {picked.unit ? ` ${picked.unit}` : ""}
-                    </span>
-                  </label>
-                  <input
-                    id="compare-value"
-                    type="range"
-                    min={picked.min}
-                    max={picked.max}
-                    step={picked.step}
-                    value={compareValues[picked.name] ?? picked.value}
-                    onChange={(event) => applyCompareValue(picked.name, Number(event.target.value))}
-                  />
-                  <p className="nb-note">
-                    Original {(baseline?.[picked.name] ?? picked.value).toFixed(digits(picked.step))}
-                    {picked.unit ? ` ${picked.unit}` : ""}. Both boards run on the same clock and the same scene.
-                  </p>
-                </div>
-              ) : (
-                <p className="nb-note">This scene fixes every quantity, so there is nothing to compare.</p>
-              )}
+              <p className="nb-note">Change a value to replay both simulations automatically. The original values stay fixed.</p>
+              <VariableSliders variables={adjustable} values={compareValues} onChange={applyCompareValue} />
+              <div className="nb-compare-results">
+                {answerList(baselineAnswers,"Original")}
+                {answerList(compareAnswers,"Changed")}
+              </div>
             </section>
           ) : null}
 
-          <section className="nb-section" id="nb-compose">
+          <section className="nb-section" id="nb-compose" hidden={compare || leftView!=="problem"}>
             <div className="nb-subhead">
               <h3 className="nb-h3">Problem input</h3>
               <button
@@ -875,7 +849,7 @@ export default function Page() {
             </div>
           </section>
 
-          <details className="nb-section nb-details">
+          <details className="nb-section nb-details" hidden={compare || leftView!=="problem"}>
             <summary>Model and assumptions</summary>
             {live?.problemText ? <p className="nb-solution">{live.problemText}</p> : null}
             {solution ? <p className="nb-solution">{solution}</p> : null}
@@ -885,24 +859,22 @@ export default function Page() {
             </p>
           </details>
 
-          {notice ? (
+          {notice && !compare && leftView==="problem" ? (
             <p className="nb-notice" role="status">
               {notice}
             </p>
           ) : null}
-          {prepared.warnings.length > 0 ? (
+          {prepared.warnings.length > 0 && !compare && leftView==="problem" ? (
             <p className="nb-notice nb-warn" role="status">
               Scene warnings: {prepared.warnings.join(" ")}
             </p>
           ) : null}
-          {editError ? (
+          {editError && !compare && leftView==="variables" ? (
             <p className="nb-notice nb-warn" role="alert">
               {editError}
             </p>
           ) : null}
-        </aside>
-
-        <main className="nb-workspace">
+          <section className="nb-section" hidden={compare || leftView!=="simulation"} aria-label="Simulation controls">
           <div className="nb-toolbar">
             <div className="nb-modes" role="group" aria-label="View mode">
               <button
@@ -954,6 +926,79 @@ export default function Page() {
               </button>
             ) : null}
           </div>
+{live ? <Timeline
+                duration={duration}
+                time={time}
+                playing={playing}
+                speed={speed}
+                muted={muted}
+                narrationReady={narrationReady}
+                shots={shots}
+                playBlocked={guessMissing}
+                onPlay={togglePlay}
+                onPause={() => setPlaying(false)}
+                onSeek={seek}
+                onSpeed={setSpeed}
+                onReset={reset}
+                onMute={setMuted}
+                onShots={setShots}
+              /> : null}          </section>
+          {compare && live ? <section className="nb-section" aria-label="Comparison playback"><Timeline
+                duration={duration}
+                time={time}
+                playing={playing}
+                speed={speed}
+                muted={muted}
+                narrationReady={narrationReady}
+                shots={shots}
+                playBlocked={guessMissing}
+                onPlay={togglePlay}
+                onPause={() => setPlaying(false)}
+                onSeek={seek}
+                onSpeed={setSpeed}
+                onReset={reset}
+                onMute={setMuted}
+                onShots={setShots}
+              /></section> : null}
+          {live ? <>              <section className="nb-section nb-params" id="nb-variables" hidden={compare || leftView!=="variables"}>
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">{compare ? "Changed variables" : "Variables"}</h3>
+                </div>
+                <VariableSliders
+                  variables={live?.variables ?? []}
+                  values={compare ? compareValues : values}
+                  onChange={changeValue}
+                />
+              </section>
+
+              <section className="nb-section nb-instruction" hidden={compare || leftView!=="variables"}>
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">Change this scene</h3>
+                </div>
+                <label className="nb-field" htmlFor="edit-instruction">
+                  <span>Instruction</span>
+                </label>
+                <textarea
+                  id="edit-instruction"
+                  rows={2}
+                  maxLength={1000}
+                  placeholder="make the ramp steeper"
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="nb-btn nb-btn-primary nb-btn-wide"
+                  disabled={editBusy || editText.trim().length === 0}
+                  onClick={runEdit}
+                >
+                  {editBusy ? "Applying the change" : "Apply the change"}
+                </button>
+              </section></> : null}
+        </aside>
+
+        <main className="nb-workspace">
+
 
           <div className="nb-viewport">
             <div className="nb-sim" hidden={view !== "simulation"}>
@@ -993,6 +1038,7 @@ export default function Page() {
                         shot={shot}
                         onManualOrbit={() => setManual(true)}
                         sharedClock={sharedClock}
+                        restart={playbackRevision}
                         highlight={highlight}
                       />
                     </div>
@@ -1012,6 +1058,7 @@ export default function Page() {
                         shot={shot}
                         onManualOrbit={() => setManual(true)}
                         sharedClock={sharedClock}
+                        restart={playbackRevision}
                         follower
                         highlight={highlight}
                       />
@@ -1033,72 +1080,14 @@ export default function Page() {
                     shot={shot}
                     onManualOrbit={() => setManual(true)}
                     sharedClock={sharedClock}
+                        restart={playbackRevision}
                     highlight={highlight}
                   />
                   <div className="nb-stage-hint">Drag to orbit · Scroll to zoom</div>
                 </div>
               )}
 
-              {live ? <><Timeline
-                duration={duration}
-                time={time}
-                playing={playing}
-                speed={speed}
-                muted={muted}
-                narrationReady={narrationReady}
-                shots={shots}
-                playBlocked={guessMissing}
-                onPlay={togglePlay}
-                onPause={() => setPlaying(false)}
-                onSeek={seek}
-                onSpeed={setSpeed}
-                onReset={reset}
-                onMute={setMuted}
-                onShots={setShots}
-              />
 
-              {compare ? (
-                <section className="nb-compare-strip">
-                  {answerList(answersHidden ? null : baselineAnswers, "Original")}
-                  {answerList(answersHidden ? null : compareAnswers, "Changed")}
-                </section>
-              ) : null}
-
-              <section className="nb-section nb-params" id="nb-variables">
-                <div className="nb-subhead">
-                  <h3 className="nb-h3">{compare ? "Changed variables" : "Variables"}</h3>
-                </div>
-                <VariableSliders
-                  variables={live?.variables ?? []}
-                  values={compare ? compareValues : values}
-                  onChange={changeValue}
-                />
-              </section>
-
-              <section className="nb-section nb-instruction">
-                <div className="nb-subhead">
-                  <h3 className="nb-h3">Change this scene</h3>
-                </div>
-                <label className="nb-field" htmlFor="edit-instruction">
-                  <span>Instruction</span>
-                </label>
-                <textarea
-                  id="edit-instruction"
-                  rows={2}
-                  maxLength={1000}
-                  placeholder="make the ramp steeper"
-                  value={editText}
-                  onChange={(event) => setEditText(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="nb-btn nb-btn-primary nb-btn-wide"
-                  disabled={editBusy || editText.trim().length === 0}
-                  onClick={runEdit}
-                >
-                  {editBusy ? "Applying the change" : "Apply the change"}
-                </button>
-              </section></> : null}
             </div>
 
             <div className="nb-video" hidden={view !== "video"}>
