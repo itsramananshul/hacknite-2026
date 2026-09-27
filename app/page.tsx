@@ -100,6 +100,9 @@ export default function Page() {
   const [editError, setEditError] = useState<string | null>(null);
   const [shareStatus, setShareStatus] = useState("");
 
+  const playingState = useRef(playing);
+  playingState.current = playing;
+
   const sharedClock = useRef(0);
   useEffect(() => {
     const encoded = new URLSearchParams(window.location.hash.slice(1)).get("scene");
@@ -178,10 +181,15 @@ export default function Page() {
   const answersHidden = predict && !canReveal;
   const guessMissing = predict && !canReveal && !Number.isFinite(guessNumber);
 
-  const narrationReady = useMemo(
-    () => typeof window !== "undefined" && typeof window.speechSynthesis !== "undefined",
-    [],
-  );
+  const [narrationReady, setNarrationReady] = useState(false);
+  useEffect(() => {
+    if (typeof window.speechSynthesis === "undefined") return;
+    const speech = window.speechSynthesis;
+    const update = () => setNarrationReady(speech.getVoices().length > 0);
+    update();
+    speech.addEventListener("voiceschanged", update);
+    return () => speech.removeEventListener("voiceschanged", update);
+  }, []);
 
   useEffect(() => {
     if (!live) return;
@@ -219,10 +227,14 @@ export default function Page() {
   }, []);
 
   const handleTime = useCallback((next: number) => {
+    if (!playingState.current) return;
     setTime((previous) => (Math.abs(previous - next) < 1e-4 ? previous : next));
   }, []);
 
-  const handleComplete = useCallback(() => setPlaying(false), []);
+  const handleComplete = useCallback(() => {
+    setTime(duration);
+    setPlaying(false);
+  }, [duration]);
 
   const handleLoop = useCallback(() => {
     if (live?.loop) setRevealed(true);
