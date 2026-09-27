@@ -1,6 +1,6 @@
 # Chalk
 
-An interactive science and mathematics notebook by Anshul Raman. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
+An interactive science and mathematics notebook by Anshul Raman and Jayrajsinh Gohil. Give it a numerical problem as text or a photo, then explore its solution through a 3D scene, equations, and adjustable values.
 
 The interface follows the supplied notebook design: warm white pages, serif derivations, blue controls, and a light 3D viewport.
 
