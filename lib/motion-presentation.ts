@@ -6,7 +6,9 @@ import type {SceneScript} from "./schema";
 export function motionPresentation(scene:SceneScript, values:Record<string,number>={}) {
   const counts=new Map<string,number>();
   for(const o of scene.objects)if(o.label)counts.set(o.label,(counts.get(o.label) ?? 0)+1);
-  const pointIds=scene.objects.filter(o=>o.shape==="sphere" && ((counts.get(o.label) ?? 0)>=3 || /^(marker|tracer|point) \d+$/i.test(o.label))).map(o=>o.id);
+  const pointIds=scene.objects.filter(o=>o.shape==="sphere" &&
+    (/^(marker|tracer|point) \d+$/i.test(o.label) ||
+      ((counts.get(o.label) ?? 0)>=3 && /^(string element|wave marker|marker|tracer|point|node|particle)$/i.test(o.label.trim())))).map(o=>o.id);
   scene={...scene,objects:scene.objects.map(o=>{
     const i=pointIds.indexOf(o.id);
     return i<0 ? o : {...o,label:String.fromCharCode(65+i%26)+(i>=26 ? String(Math.floor(i/26)+1) : "")};

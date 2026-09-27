@@ -35,6 +35,38 @@ test("answer numbers come from expressions, not model claims", () => {
   assert.deepEqual(output.expressions, ["sqrt(2*5/9.81)"]);
 });
 
+test("structured solver and scene results bypass malformed prose but retain arithmetic and scene checks",async()=>{
+  const scene=presets.projectile;let count=0;let delivered=false;
+  const values=compileScene(scene).answerValues();
+  const transport:typeof fetch=async(url,init)=>{
+    const path=new URL(String(url)).pathname;
+    if(path==="/experimental/tool/ids")return Response.json(["bash","read","write"]);
+    if(path==="/session")return Response.json({id:"structured-test"});
+    if(!path.endsWith("/message"))return Response.json(true);
+    const body=JSON.parse(String(init?.body));
+    assert.equal(body.format.type,"json_schema");assert.equal(body.format.retryCount,1);
+    assert.deepEqual(body.tools,{bash:false,read:false,write:false});
+    const result=count++===0 ? {solutionText:"Projectile solution",answers:scene.answers.map((a,i)=>({question:a.question,expression:String(values[i]),unit:a.unit}))} : scene;
+    return Response.json({info:{structured:result},parts:[{type:"text",text:'{"malformed": "unfinished'}]});
+  };
+  const result=await runOpenCodePipeline({problemText:scene.problemText,image:null},{env:{},fetchImpl:transport,onSolved:()=>{delivered=true;}});
+  assert.equal(count,2);assert.ok(delivered);assert.equal(result.scene?.title,scene.title);assert.deepEqual(result.answers.map(a=>a.value),values);
+});
+
+test("schema-shaped output cannot bypass the arithmetic whitelist",async()=>{
+  let asked=0;
+  const transport:typeof fetch=async(url)=>{
+    const path=new URL(String(url)).pathname;
+    if(path==="/experimental/tool/ids")return Response.json([]);
+    if(path==="/session")return Response.json({id:"unsafe-structured-test"});
+    if(!path.endsWith("/message"))return Response.json(true);
+    asked++;
+    return Response.json({info:{structured:{solutionText:"Unsafe",answers:[{question:"Result",expression:"import(1)",unit:"1"}]}},parts:[]});
+  };
+  await assert.rejects(runOpenCodePipeline({problemText:"Calculate",image:null},{env:{},fetchImpl:transport}),/cannot evaluate/);
+  assert.equal(asked,1);
+});
+
 test("constant answers reject variables, hidden time, unsafe calls, and nonfinite numbers", () => {
   for (const expression of ["t", "1 > 0 ? 3 : t", "height*2", "a=2", "import(1)", "1/0", "1>0"]) {
     assert.throws(() => evaluateAnswerExpression({question:"Result", expression,unit:"m"}));

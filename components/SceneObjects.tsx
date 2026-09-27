@@ -6,7 +6,6 @@ import { useCallback, useContext, useEffect, useMemo, useRef } from "react";
 import {LabelLayout,type LabelBox} from "./LabelLayout";
 import {placeLabel} from "@/lib/label-layout";
 import {captionWorldScale,captionBox} from "@/lib/caption-size";
-import {captionObjectIds} from "@/lib/motion-presentation";
 import * as THREE from "three";
 import { compileScene } from "@/lib/expressions";
 import type { SceneObject, SceneScript } from "@/lib/schema";
@@ -154,15 +153,12 @@ function ObjectLabels({scene,sampleRef,timeRef,pointIds,hovered}:{scene:SceneScr
   const extent=useMemo(()=>new THREE.Vector3(),[]);
   useFrame(()=>{
     const placed:LabelBox[]=[];
-    const active=scene.steps.find(step=>timeRef.current>=step.tStart && timeRef.current<step.tEnd) || scene.steps.at(-1);
-    const focus=new Set(active?.focus||[]);
-    const captions=captionObjectIds(scene,[...focus]);
     if(layout) layout.current=placed;
     for(const object of scene.objects) {
       const holder=holders.current[object.id];
       const frame=sampleRef.current?.objects.find(o=>o.id===object.id);
       if(!holder || !frame) continue;
-      holder.visible=frame.visible && captions.has(object.id) && hovered.current===object.id;
+      holder.visible=frame.visible && hovered.current===object.id;
       if(!holder.visible) continue;
       origin.fromArray(frame.position);
       anchor.copy(origin).y+=labelHeight(object)*(frame.scale?.[1] ?? 1);

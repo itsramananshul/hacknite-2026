@@ -39,3 +39,10 @@ test("particle labels use letters and repeated descriptive captions do not flood
   const ids=captionObjectIds(scene,[scene.objects[3].id]);
   assert.deepEqual([...ids],[scene.objects[3].id]);
 });
+test("hover labels preserve chemical species names instead of renaming ions as graph points",()=>{
+  const scene=structuredClone(presets.wave);
+  for(const o of scene.objects)if(o.shape==="sphere")o.label="Hydronium ion H3O+";
+  const view=motionPresentation(scene);
+  assert.equal(view.pointIds.length,0);
+  assert.equal(view.scene.objects.find(o=>o.shape==="sphere")?.label,"Hydronium ion H3O+");
+});
