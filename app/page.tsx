@@ -168,7 +168,7 @@ export default function Page() {
         setScene(restoredScene);
         setSolution(typeof saved.solution==="string" ? saved.solution : "");
         setPlaying(false);
-        
+
         setPredict(false);
         setView("simulation");
         setNotice(null);
@@ -241,7 +241,7 @@ export default function Page() {
       setPlaying(false);
       setTime(0);
       sharedClock.current = 0;
-      
+
       setPredict(false);
       setScene(shared);
       activeQuestion.current=null;
@@ -318,8 +318,8 @@ export default function Page() {
     setPlaying(false);
     setManual(false);
     setSelected(null);
-    
-    
+
+
     setGuess("");
     setRevealed(false);
   }, [live]);
@@ -458,7 +458,7 @@ export default function Page() {
     cancelSpeech();
     setTime(0);
     sharedClock.current=0;
-    
+
     setPredict(false);
     setSelected(null);
     setValues({});
