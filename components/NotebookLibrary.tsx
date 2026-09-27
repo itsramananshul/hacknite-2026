@@ -15,7 +15,7 @@ export default function NotebookLibrary({library,activeId,cloud=false,onSelect,o
     <select id="notebook-select" className="nb-select" value={active.id} onChange={e=>{onSelect(e.target.value);setRenaming(false);}}>
       {library.notebooks.map(n=><option key={n.id} value={n.id}>{n.name}</option>)}
     </select>
-    <p className="nb-note">{active.subject} · Saved on this browser</p>
+    <p className="nb-note">{active.subject} · {cloud ? "Saved to your account and this browser" : "Saved on this browser"}</p>
     {renaming ? <form onSubmit={e=>{e.preventDefault();if(name.trim()){onRename(active.id,name);setRenaming(false);}}}>
       <label className="nb-field" htmlFor="notebook-name">Notebook name</label>
       <input id="notebook-name" value={name} maxLength={80} onChange={e=>setName(e.target.value)} required />

@@ -662,6 +662,7 @@ function answerBlock(answers: readonly SolvedAnswer[], expressions: readonly str
 }
 
 interface SceneRequest {
+  subject?: "physics"|"chemistry"|"mathematics";
   problemText: string;
   fromImage: boolean;
   solutionText: string;
@@ -673,6 +674,13 @@ interface SceneRequest {
 
 function scenePrompt(request: SceneRequest): string {
   const parts: string[] = [];
+  if(request.subject==="mathematics")parts.push(
+    "This is a mathematics notebook. Draw the actual mathematical relationship, not an unrelated physics apparatus.",
+    "For a function graph, prefer a single moving sphere with trail=true, mapping t across a stated x interval and computing its y from the actual function. Use fixed-point rod connectors for the coordinate axes. This gives a smooth sampled curve without dozens of point objects. Gravity is zero and the camera faces the XY plane. Explain which graph coordinate corresponds to each quantity, and show a tangent or area only when relevant to the requested calculation.",
+  );
+  if(request.subject==="chemistry")parts.push(
+    "This is a chemistry notebook. Show the relevant chemical relationship: particles and bonds, reaction progress, concentration, energy or charge transfer. State that particle counts and distances are schematic; a sphere is not a literal mole. Use only constants supplied by the problem or standard definitions, and preserve the chemistry units in answers. Avoid unrelated mechanical motion.",
+  );
   if (request.instruction) {
     parts.push(
       `Chalk is already showing this scene, and the user asked for one change: "${request.instruction}".`,
@@ -878,6 +886,7 @@ export async function runOpenCodePipeline(request: PipelineRequest, deps: OpenCo
       expressions: solved.expressions,
       instruction: request.instruction,
       currentScene: request.currentScene,
+      subject: request.subject,
     });
     return {
       scene: built.scene,
