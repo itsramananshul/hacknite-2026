@@ -10,6 +10,11 @@ export async function publishGeneration(client:SupabaseClient,job:GenerationJob,
   // Deleting a question/notebook must not recreate it when its worker finishes.
   if(!data){await persist({...job,published:true});return;}
   const payload=data.payload;
+  // Older saved pages may have a current scene but no version list yet.
+  if(job.result && payload.scene){
+    const previous=keepSimulation(payload.questionPage.simulations ?? [],payload.scene,payload.values ?? {},payload.solution ?? "",payload.questionPage.video);
+    payload.questionPage={...payload.questionPage,simulations:previous.versions};
+  }
   const result=job.result;
   const solved=result ?? job.answers;
   if(solved){

@@ -48,6 +48,18 @@ test("a finished worker cannot recreate a deleted question",async()=>{
   assert.equal((await readGeneration(userId,pageId))?.published,true);
 });
 
+test("regenerating a legacy page archives its previous scene and video first",async()=>{
+  const oldVideo={id:crypto.randomUUID(),fingerprint:"original"};
+  const payload={questionPage:{id:"legacy",status:"building",video:oldVideo},scene:presets.wave,values:{L:2},solution:"Original solution"};
+  let update:any;
+  function chain(result:any):any{return {eq:()=>chain(result),maybeSingle:async()=>result,then:(resolve:any)=>Promise.resolve(result).then(resolve)};}
+  const client={from:()=>({select:()=>chain({data:{payload},error:null}),update:(body:any)=>{update=body;return chain({error:null});}})} as unknown as SupabaseClient;
+  await publishGeneration(client,{id:"job",userId:"owner",pageId:"legacy",status:"complete",updatedAt:"now",result:{scene:presets.projectile,solutionText:"New solution",answers:[],warnings:[]}},async()=>{});
+  assert.equal(update.payload.questionPage.simulations.length,2);
+  const original=update.payload.questionPage.simulations[0];
+  assert.deepEqual(original.scene,presets.wave);assert.deepEqual(original.video,oldVideo);assert.equal(original.solution,"Original solution");
+});
+
 test("simulation failure still saves the image transcription and solution without losing versions",async()=>{
  const payload={questionPage:{id:"photo",problemText:"",title:"My chemistry question",status:"building",sourceImage:"original upload",simulations:[{id:"old"}],archivedAt:"2026-09-27"},scene:{title:"Old simulation"},solution:""};
  let update:any;
