@@ -1,6 +1,6 @@
 "use client";
 
-import { Html, Line } from "@react-three/drei";
+import { Billboard, Line, Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -121,9 +121,9 @@ function Body({ object, sampleRef, lit }: { object: SceneObject; sampleRef: Samp
     <group ref={group}>
       <Shape object={object} lit={lit} />
       {object.label ? (
-        <Html position={[0, labelHeight(object), 0]} center zIndexRange={[24, 0]} style={{ pointerEvents: "none" }}>
-          <span className="tag3d">{object.label}</span>
-        </Html>
+        <Billboard position={[0, labelHeight(object), 0]}>
+          <Text font="/fonts/chalk-mono.ttf" fontSize={0.2} color="#F2EDE1" outlineWidth={0.015} outlineColor="#0F2A24" anchorX="center" anchorY="bottom">{object.label}</Text>
+        </Billboard>
       ) : null}
     </group>
   );

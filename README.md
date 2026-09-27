@@ -19,7 +19,7 @@ The interface follows the supplied Chalk design: a green board, handwritten word
 
 ## Run locally
 
-Install dependencies with `npm install`. Copy `.env.example` to `.env.local`, set a server-side `GEMINI_API_KEY`, and select an available Gemini model with `GEMINI_MODEL`. Production currently uses `gemini-3.7-flash`. Never put the key in a `NEXT_PUBLIC_` variable.
+Install dependencies with `npm install`. Copy `.env.example` to `.env.local`, set a server-side `GEMINI_API_KEY`, and select an available Gemini model with `GEMINI_MODEL`. Production currently uses `gemini-3.6-flash`. Never put the key in a `NEXT_PUBLIC_` variable.
 
 ```sh
 npm run dev
@@ -46,4 +46,4 @@ The 126 tests cover unsafe expressions, scene references, numerical checks, slid
 
 ## Deployment
 
-Deploy with `npx vercel deploy --prod` after configuring server environment variables in the linked project. Model quotas belong to the Google account; quota failures are reported visibly, and cached examples remain usable.
+Deploy with `npx vercel deploy --prod` after configuring server environment variables in the linked project. Model quotas and API credit belong to the Google account; quota and billing failures are reported visibly, and cached examples remain usable. A Google 402 response requires available API credit or a different working key before live solving can succeed.

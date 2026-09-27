@@ -1,6 +1,6 @@
 "use client";
 
-import { Html } from "@react-three/drei";
+import { Billboard, Text } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -77,12 +77,9 @@ function VectorGlyph({
   return (
     <group ref={holder}>
       <primitive object={arrow} />
-      <group ref={labelHolder}><Html center zIndexRange={[22, 0]} style={{ pointerEvents: "none" }}>
-        <span className="tag3d tag3d-vector">
-          {vector.label || vector.kind}
-          <b>{shownMagnitude.toFixed(2)}</b>
-        </span>
-      </Html></group>
+      <group ref={labelHolder}><Billboard>
+        <Text font="/fonts/chalk-mono.ttf" fontSize={0.18} color="#79D6B0" outlineWidth={0.012} outlineColor="#0F2A24" anchorX="center" anchorY="bottom">{`${vector.label || vector.kind} ${shownMagnitude.toFixed(2)}`}</Text>
+      </Billboard></group>
     </group>
   );
 }

@@ -513,8 +513,8 @@ export default function Page() {
                         onTime={() => undefined}
                         onComplete={() => undefined}
                         onLoop={() => undefined}
-                        shot={null}
-                        onManualOrbit={() => undefined}
+                        shot={shot}
+                        onManualOrbit={() => setManual(true)}
                         sharedClock={sharedClock}
                         follower
                         highlight={highlight}

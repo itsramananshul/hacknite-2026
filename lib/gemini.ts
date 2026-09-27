@@ -22,7 +22,7 @@ export const MAX_IMAGE_BYTES = 2 * MIB;
 export const MAX_PROBLEM_CHARS = 6000;
 export const MAX_INSTRUCTION_CHARS = 1000;
 
-const DEFAULT_MODEL = "gemini-3.7-flash";
+const DEFAULT_MODEL = "gemini-3.6-flash";
 const REQUEST_TIMEOUT_MS = 45_000;
 const SOLVE_MAX_OUTPUT_TOKENS = 4096;
 const SCENE_MAX_OUTPUT_TOKENS = 8192;
@@ -199,16 +199,22 @@ function providerStatus(error: unknown): number {
 function providerFailure(error: unknown): RouteError {
   if (error instanceof RouteError) return error;
   const status = providerStatus(error);
+  const reason = error instanceof Error ? error.message : "";
+  const key = process.env.GEMINI_API_KEY?.trim() || "";
+  console.warn("Gemini provider response", {
+    status,
+    reason: reason.replaceAll(key || "__no_key__", "[redacted]").slice(0, 700),
+  });
   if (status === 429) {
-    const reason = error instanceof Error ? error.message : "";
-    const key = process.env.GEMINI_API_KEY || "";
-    console.warn("Gemini quota response", reason.replaceAll(key || "__no_key__", "[redacted]").slice(0, 500));
     const daily = /requests per day|daily|per.day|quota.*exceeded/i.test(reason);
     return fail(429, "rate_limited", daily
       ? "This Gemini model has reached its daily quota. Try again after its quota resets, or configure another supported Gemini model. The presets still work."
       : "Gemini is rate limiting this key. Wait a few seconds and try again.");
   }
   if (status === 401 || status === 403) return fail(503, "gemini_key_rejected", KEY_REJECTED);
+  if (status === 402) {
+    return fail(503, "gemini_payment_required", "Google requires available Gemini API credit for this server's key. Check its billing account in Google AI Studio. The presets and sliders still work.");
+  }
   const name = error instanceof Error ? error.name : "";
   if (name === "AbortError" || name === "TimeoutError" || name === "RequestTimeoutError") {
     return fail(
