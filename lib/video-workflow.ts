@@ -7,14 +7,16 @@ import type {videoPayload} from "./video";
 type Input={id:string;payload:ReturnType<typeof videoPayload>;uploadUrl:string};
 async function launch(input:Input){
   "use step";
-  const sandbox=await Sandbox.create({name:`chalk-video-${input.id}`,persistent:false,timeout:25*60_000,resources:{vcpus:2}});
+  const snapshotId=process.env.CHALK_VIDEO_SNAPSHOT_ID;
+  const options={name:`chalk-video-${input.id}`,persistent:false,timeout:25*60_000,resources:{vcpus:2}};
+  const sandbox=await Sandbox.create(snapshotId?{...options,source:{type:"snapshot",snapshotId}}:options);
   try{
     const directory="/vercel/sandbox/video";
     await sandbox.writeFiles([
       {path:`${directory}/input.json`,content:Buffer.from(JSON.stringify(input.payload))},
       {path:`${directory}/upload.json`,content:Buffer.from(JSON.stringify({url:input.uploadUrl}))},
       {path:`${directory}/status.json`,content:Buffer.from(JSON.stringify({status:"rendering",message:"Preparing the cloud renderer."}))},
-      ...await Promise.all(["render-explanation.py","video_layout.py","render-cloud-video.py"].map(async name=>({path:`/vercel/sandbox/scripts/${name}`,content:await readFile(join(process.cwd(),"scripts",name))}))),
+      ...await Promise.all(["render-explanation.py","video_layout.py","render-cloud-video.py","setup-cloud-video.py"].map(async name=>({path:`/vercel/sandbox/scripts/${name}`,content:await readFile(join(process.cwd(),"scripts",name))}))),
       {path:"/vercel/sandbox/public/brand/chalk-logo.png",content:await readFile(join(process.cwd(),"public","brand","chalk-logo.png"))},
     ]);
     await sandbox.runCommand({cmd:"python3",args:["/vercel/sandbox/scripts/render-cloud-video.py",directory],detached:true});

@@ -61,6 +61,8 @@ The solution and visualization are separate stages. Model-generated scenes are s
 
 On Vercel, generation runs through durable Workflow jobs. Video rendering runs in a Vercel Sandbox with Python, Manim, FFmpeg, TeX, and narration tools. The completed MP4 is uploaded to Supabase Storage. The browser checks the saved job status, so refreshing or signing out does not cancel a hosted rendering job.
 
+A prepared Sandbox snapshot keeps the rendering dependencies installed. Set `CHALK_VIDEO_SNAPSHOT_ID` to that snapshot so new jobs skip package installation. Each video still gets an isolated sandbox; only the clean rendering environment is reused, never another question's files or upload credentials. Without a configured snapshot, a job must install its dependencies first.
+
 Local development can use Gemini, OpenCode, or Ollama. OpenCode and Ollama run on the local host; the deployed Vercel generation workflow uses Gemini and does not depend on a laptop's loopback server.
 
 ## Technology
@@ -125,6 +127,8 @@ Local rendering uses `.chalk-work/video-venv` and writes jobs into `.chalk-work/
 3. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `CHALK_SOLVER=gemini`, and `GEMINI_API_KEY` in Vercel. Optional Gemini model overrides are listed in `.env.example`.
 4. Configure Supabase Auth's site URL and allowed redirect URLs for the deployed domain and local development URLs.
 5. Deploy. The Next.js configuration enables Workflow and includes the fixed video-rendering scripts and logo needed by Sandbox jobs.
+
+For faster video startup, run `scripts/setup-cloud-video.py` once inside a clean Vercel Sandbox, snapshot the prepared environment, and configure its ID as `CHALK_VIDEO_SNAPSHOT_ID`. Rebuild that snapshot when changing renderer dependencies. The application sends the current rendering scripts separately, so ordinary script updates do not require reinstalling the dependencies.
 
 Vercel Sandbox access uses the deployment's Vercel identity. Supabase requests use the authenticated user's session and ownership policies; the video pipeline does not require a Supabase service-role key.
 

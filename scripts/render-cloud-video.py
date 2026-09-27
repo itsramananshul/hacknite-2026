@@ -1,4 +1,4 @@
-"""Trusted cloud wrapper: install the fixed renderer, render, upload one scoped MP4."""
+"""Trusted cloud wrapper: reuse the prepared renderer, render, upload one scoped MP4."""
 import json
 from pathlib import Path
 import subprocess
@@ -11,14 +11,13 @@ def status(**value):
     temporary.write_text(json.dumps(value),encoding="utf-8")
     temporary.replace(directory/"status.json")
 try:
-    status(status="rendering",message="Installing the cloud video renderer.")
-    with (directory/"setup.log").open("w") as log:
-        subprocess.run(["sudo","apt-get","update"],check=True,stdout=log,stderr=log,timeout=120)
-        subprocess.run(["sudo","apt-get","install","-y","build-essential","ffmpeg","libcairo2-dev","libpango1.0-dev","pkg-config","python3-dev","python3-venv","texlive-latex-extra","texlive-fonts-recommended","texlive-science","dvisvgm","espeak-ng","fonts-liberation"],check=True,stdout=log,stderr=log,timeout=600)
-        subprocess.run(["python3","-m","venv",str(directory/"venv")],check=True,stdout=log,stderr=log,timeout=60)
-        subprocess.run([str(directory/"venv/bin/python"),"-m","pip","install","manim==0.21.0"],check=True,stdout=log,stderr=log,timeout=300)
+    runtime=Path('/vercel/sandbox/video-runtime')
+    if not (runtime/'ready').exists():
+        status(status="rendering",message="Preparing the cloud video renderer for first use.")
+        subprocess.run(['python3',str(Path(__file__).with_name('setup-cloud-video.py'))],check=True,timeout=1200)
+    status(status="rendering",message="Rendering your explanation with the prepared cloud renderer.")
     with (directory/"render.log").open("w") as log:
-        subprocess.run([str(directory/"venv/bin/python"),str(Path(__file__).with_name("render-explanation.py")),str(directory)],check=True,stdout=log,stderr=log,timeout=900)
+        subprocess.run([str(runtime/"venv/bin/python"),str(Path(__file__).with_name("render-explanation.py")),str(directory)],check=True,stdout=log,stderr=log,timeout=900)
     rendered=json.loads((directory/"status.json").read_text(encoding="utf-8"))
     status(status="rendering",message="Saving your video to your account.")
     movie=directory/"explanation.mp4"
