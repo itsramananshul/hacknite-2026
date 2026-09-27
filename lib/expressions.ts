@@ -12,7 +12,7 @@ export const TIME_SYMBOL = "t";
 
 export const ALLOWED_CONSTANTS: readonly string[] = ["pi", "e"];
 
-export const ALLOWED_FUNCTIONS: readonly string[] = ["sin", "cos", "tan", "sqrt", "abs", "min", "max", "exp"];
+export const ALLOWED_FUNCTIONS: readonly string[] = ["sin", "cos", "tan", "sqrt", "abs", "min", "max", "exp", "log", "log10"];
 
 export const EXPRESSION_LIMITS = {
   maxNodes: 300,
@@ -20,7 +20,7 @@ export const EXPRESSION_LIMITS = {
   maxFunctionArgs: 32,
 } as const;
 
-const SINGLE_ARG_FUNCTIONS = new Set(["sin", "cos", "tan", "sqrt", "abs", "exp"]);
+const SINGLE_ARG_FUNCTIONS = new Set(["sin", "cos", "tan", "sqrt", "abs", "exp", "log", "log10"]);
 const VARIADIC_FUNCTIONS = new Set(["min", "max"]);
 const ALLOWED_OPERATORS = new Set(["+", "-", "*", "/", "^", "%", "<", "<=", ">", ">=", "==", "!="]);
 const BINARY_OPERATORS = new Set(["+", "-", "*", "/", "^", "%", "<", "<=", ">", ">=", "==", "!="]);

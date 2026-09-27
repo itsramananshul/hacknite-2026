@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import NotebookLibrary from "@/components/NotebookLibrary";
+import AccountPanel from "@/components/AccountPanel";
 import {EMPTY_LIBRARY, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
 import ExplanationVideo from "@/components/ExplanationVideo";
@@ -97,15 +98,6 @@ function IconDerivation() {
   );
 }
 
-function IconSimulation() {
-  return (
-    <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
-      <rect x="3.5" y="3.5" width="13" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M8.4 7.4 13 10l-4.6 2.6z" fill="currentColor" />
-    </svg>
-  );
-}
-
 function IconVariables() {
   return (
     <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" focusable="false">
@@ -122,6 +114,7 @@ export default function Page() {
   const notebookRef = useRef("physics");
   const [libraryReady,setLibraryReady] = useState(false);
   const [libraryOpen,setLibraryOpen] = useState(false);
+  const [accountOpen,setAccountOpen] = useState(false);
   const [storageError,setStorageError] = useState<string|null>(null);
   const activeNotebook = library.notebooks.find(n=>n.id===notebookId) ?? library.notebooks[0];
   const pendingValues = useRef<Record<string,number>|null>(null);
@@ -175,7 +168,7 @@ export default function Page() {
         setScene(restoredScene);
         setSolution(typeof saved.solution==="string" ? saved.solution : "");
         setPlaying(false);
-        setCompare(false);
+        
         setPredict(false);
         setView("simulation");
         setNotice(null);
@@ -220,10 +213,7 @@ export default function Page() {
   const [shots, setShots] = useState(true);
   const [manual, setManual] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
-  const [compare, setCompare] = useState(false);
-  const [baseline, setBaseline] = useState<Record<string, number> | null>(null);
-  const [compareValues, setCompareValues] = useState<Record<string, number>>({});
-  const [leftView,setLeftView] = useState<"problem"|"derivation"|"simulation"|"variables">("problem");
+  const [leftView,setLeftView] = useState<"problem"|"derivation"|"prediction"|"variables">("problem");
   const [playbackRevision,setPlaybackRevision] = useState(0);
   const [predict, setPredict] = useState(false);
   const [guess, setGuess] = useState("");
@@ -251,7 +241,7 @@ export default function Page() {
       setPlaying(false);
       setTime(0);
       sharedClock.current = 0;
-      setCompare(false);
+      
       setPredict(false);
       setScene(shared);
       activeQuestion.current=null;
@@ -269,10 +259,6 @@ export default function Page() {
   const live = prepared.scene;
   const compiled = prepared.compiled;
   const steps = useMemo(() => live?.steps ?? [], [live]);
-  const adjustable = useMemo(
-    () => (live?.variables ?? []).filter((variable) => variable.adjustable),
-    [live],
-  );
   const duration = live?.duration ?? 1;
 
   const answers = useMemo(() => {
@@ -283,24 +269,6 @@ export default function Page() {
       return [];
     }
   }, [compiled, values]);
-
-  const baselineAnswers = useMemo(() => {
-    if (!compiled || !baseline) return [];
-    try {
-      return compiled.answerValues(baseline);
-    } catch {
-      return [];
-    }
-  }, [compiled, baseline]);
-
-  const compareAnswers = useMemo(() => {
-    if (!compiled || !compare) return [];
-    try {
-      return compiled.answerValues(compareValues);
-    } catch {
-      return [];
-    }
-  }, [compiled, compare, compareValues]);
 
   const index = useMemo(() => activeStepIndex(steps, time), [steps, time]);
   const step = index >= 0 ? steps[index] : null;
@@ -350,8 +318,8 @@ export default function Page() {
     setPlaying(false);
     setManual(false);
     setSelected(null);
-    setCompare(false);
-    setBaseline(null);
+    
+    
     setGuess("");
     setRevealed(false);
   }, [live]);
@@ -416,6 +384,9 @@ export default function Page() {
   const togglePredict = useCallback(() => {
     const next = !predict;
     setPredict(next);
+    setLeftView(next ? "prediction" : "problem");
+    setLibraryOpen(false);
+    setAccountOpen(false);
     if (next) {
       setPlaying(false);
       setManual(false);
@@ -427,24 +398,7 @@ export default function Page() {
 
   const changeValue = useCallback(
     (name: string, value: number) => {
-      if (compare) {
-        setCompareValues((previous) => ({ ...previous, [name]: value }));
-      } else {
-        setValues((previous) => ({ ...previous, [name]: value }));
-      }
-      setTime(0);
-      sharedClock.current=0;
-      setPlaybackRevision(previous=>previous+1);
-      setManual(false);
-      setPlaying(true);
-      resetPrediction();
-    },
-    [compare, resetPrediction],
-  );
-
-  const applyCompareValue = useCallback(
-    (name: string, value: number) => {
-      setCompareValues((previous) => ({ ...previous, [name]: value }));
+      setValues((previous) => ({ ...previous, [name]: value }));
       setTime(0);
       sharedClock.current=0;
       setPlaybackRevision(previous=>previous+1);
@@ -454,21 +408,6 @@ export default function Page() {
     },
     [resetPrediction],
   );
-
-  const toggleCompare = useCallback(() => {
-    if (compare) {
-      setCompare(false);
-      setBaseline(null);
-      return;
-    }
-    setBaseline(values);
-    setCompareValues(values);
-    setPredict(false);
-    setSelected(null);
-    setView("simulation");
-    document.querySelector(".nb-notebook")?.scrollTo({top:0});
-    setCompare(true);
-  }, [compare, values, adjustable]);
 
   const highlightStep = useCallback(
     (position: number) => {
@@ -501,7 +440,7 @@ export default function Page() {
   const openProblem = useCallback(() => {
     setLeftView("problem");
     setLibraryOpen(false);
-    setCompare(false);
+    setAccountOpen(false);
     setProblemOpen(true);
     requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
   }, []);
@@ -511,6 +450,7 @@ export default function Page() {
     activeQuestion.current=id;
     setLeftView("problem");
     setLibraryOpen(false);
+    setProblemOpen(false);
     setQuestionPage({id,notebookId:notebookRef.current,problemText,status:"solving",answers:null,error:null});
     setScene(null);
     setSolution("");
@@ -518,7 +458,7 @@ export default function Page() {
     cancelSpeech();
     setTime(0);
     sharedClock.current=0;
-    setCompare(false);
+    
     setPredict(false);
     setSelected(null);
     setValues({});
@@ -620,7 +560,7 @@ export default function Page() {
   const share = async () => {
     if (!live || !compiled) return;
     try {
-      const sharedValues = compare && baseline ? baseline : values;
+      const sharedValues = values;
       const evaluated = compiled.answerValues(sharedValues);
       const shared = validateSceneScript({ ...live,
         variables: live.variables.map((variable) => ({ ...variable, value: sharedValues[variable.name] ?? variable.value })),
@@ -656,30 +596,20 @@ export default function Page() {
       </div>
     ));
 
-  const answerList = (rows: number[] | null, heading: string) => (
-    <div className="nb-answer-column">
-      <p className="nb-compare-head">{heading}</p>
-      {rows === null ? (
-        <p className="nb-note">Hidden until you reveal the answer.</p>
-      ) : (
-        <dl className="nb-results">{answerRows(rows)}</dl>
-      )}
-    </div>
-  );
-
   return (
-    <div className={`nb-app${compare ? " nb-comparing" : ""}`}>
+    <div className="nb-app">
       <header className="nb-header">
         <div className="nb-brand">
           <span className="nb-wordmark">Chalk</span>
         </div>
         <span className="nb-header-divider" aria-hidden="true" />
         <div className="nb-crumbs">
-          <button type="button" className="nb-notebook-switch" onClick={()=>{setLibraryOpen(!libraryOpen);setCompare(false);}} aria-expanded={libraryOpen}>{activeNotebook.name}</button>
+          <button type="button" className="nb-notebook-switch" onClick={()=>{setLibraryOpen(!libraryOpen);setAccountOpen(false);}} aria-expanded={libraryOpen}>{activeNotebook.name}</button>
           <span className="nb-topic">{live?.title ?? (questionPage ? "New physics problem" : "Physics notebook")}</span>
         </div>
         <div className="nb-header-actions">
-          <button type="button" className="nb-btn nb-btn-ghost" onClick={openProblem}>
+          <button type="button" className="nb-btn nb-btn-ghost" aria-expanded={accountOpen} onClick={()=>{setAccountOpen(!accountOpen);setLibraryOpen(false);}}>Account</button>
+          <button type="button" className="nb-btn nb-btn-ghost" aria-expanded={problemOpen} aria-controls="nb-compose" onClick={openProblem}>
             New page
           </button>
           <button type="button" className="nb-btn nb-btn-primary" onClick={share} disabled={!live}>
@@ -689,22 +619,23 @@ export default function Page() {
           {shareUrl ? <input className="nb-share-link" aria-label="Scene share link" readOnly value={shareUrl} onFocus={event => event.currentTarget.select()} /> : null}
         </div>
       </header>
+      <section className="nb-new-page" id="nb-compose" hidden={!problemOpen} aria-label="New problem" onKeyDown={event=>{if(event.key==="Escape")setProblemOpen(false);}}>
+        <div className="nb-subhead"><h2 className="nb-h3">New problem</h2><button type="button" className="nb-link" onClick={()=>setProblemOpen(false)}>Close</button></div>
+        <InputPanel subject={activeNotebook.subject} key={restoredInput.version} initialProblemText={restoredInput.text} onStarted={handleStarted} onAnswers={handleAnswers} onFailed={handleFailed} onSolved={handleSolved} />
+      </section>
+
 
       <div className="nb-body">
         <nav className="nb-rail" aria-label="Notebook sections">
-          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={!compare && leftView==="problem"} onClick={()=>{setLibraryOpen(false);setLeftView("problem");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={leftView==="problem"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("problem");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconProblem />
             <span className="nb-rail-label">Problem</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={!compare && leftView==="derivation"} onClick={()=>{setLibraryOpen(false);setLeftView("derivation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={leftView==="derivation"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("derivation");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconDerivation />
             <span className="nb-rail-label">Derivation</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Simulation" aria-pressed={!compare && leftView==="simulation"} onClick={()=>{setLibraryOpen(false);setLeftView("simulation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
-            <IconSimulation />
-            <span className="nb-rail-label">Simulation</span>
-          </button>
-          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={!compare && leftView==="variables"} onClick={()=>{setLibraryOpen(false);setLeftView("variables");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={leftView==="variables"} onClick={()=>{setLibraryOpen(false);setAccountOpen(false);setLeftView("variables");if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconVariables />
             <span className="nb-rail-label">Variables</span>
           </button>
@@ -712,21 +643,20 @@ export default function Page() {
 
         <aside className="nb-notebook" aria-label="Notebook">
           {storageError ? <p role="alert" className="nb-notice nb-warn">{storageError}</p> : null}
-          {libraryOpen ? <NotebookLibrary library={library} activeId={notebookId}
+          {accountOpen ? <AccountPanel /> : null}
+          {libraryOpen && !accountOpen ? <NotebookLibrary library={library} activeId={notebookId}
             onSelect={id=>{notebookRef.current=id;setNotebookId(id);}}
             onRename={(id,name)=>setLibrary(previous=>renameNotebook(previous,id,name))}
             onCreate={(name,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);}}
             onOpen={id=>{const url=new URL(window.location.href);url.searchParams.set("page",id);url.hash="nb-problem";window.history.pushState(null,"",url);activeQuestion.current=null;window.dispatchEvent(new PopStateEvent("popstate"));}} /> : null}
-          <div hidden={libraryOpen} className="nb-panel-content">
-          <section className="nb-section" id="nb-problem" hidden={compare || leftView!=="problem"}>
+          <div hidden={libraryOpen || accountOpen} className="nb-panel-content">
+          <section className="nb-section" id="nb-problem" hidden={leftView!=="problem"}>
             <p className="nb-eyebrow">Experiment</p>
             <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{live?.title ?? "New physics problem"}</h1>
             {live?.problemText || questionPage ? <p className="nb-problem-text">{blurb}</p> : null}
             <div className="nb-subhead">
               <h3 className="nb-h3">Given</h3>
-              <button type="button" className="nb-link" onClick={openProblem}>
-                Give a problem
-              </button>
+
             </div>
             {live && live.variables.length > 0 ? (
               <dl className="nb-givens">
@@ -745,7 +675,7 @@ export default function Page() {
             )}
           </section>
 
-          {live ? <section className="nb-section" id="nb-derivation" hidden={compare || leftView!=="derivation"}>
+          {live ? <section className="nb-section" id="nb-derivation" hidden={leftView!=="derivation"}>
             <div className="nb-subhead">
               <h3 className="nb-h3">Derivation</h3>
               <span className="nb-count">{steps.length} {steps.length === 1 ? "step" : "steps"}</span>
@@ -760,7 +690,7 @@ export default function Page() {
             />
           </section> : null}
 
-          {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution" hidden={compare || leftView!=="problem"}>
+          {!live && questionPage ? <section className="nb-section" aria-label="Current problem solution" hidden={leftView!=="problem"}>
             <h3 className="nb-h3">{questionPage.answers ? "Calculated answers" : questionPage.status==="error" ? "Could not solve this problem" : "Solving your problem"}</h3>
             {questionPage.answers ? <>
               <dl className="nb-results">{questionPage.answers.answers.map((answer,index)=><div className="nb-result" key={index}><dt>{answer.question}</dt><dd className="num">{Number(answer.value.toPrecision(6))} {answer.unit}</dd></div>)}</dl>
@@ -769,7 +699,7 @@ export default function Page() {
           </section> : null}
 
           {live && compiled ? (
-            <section className="nb-section" aria-label="Calculated answers" hidden={compare || leftView!=="problem"}>
+            <section className="nb-section" aria-label="Calculated answers" hidden={leftView!=="problem"}>
               <div className="nb-answer">
                 <div className="nb-answer-eyebrow">
                   <span>Answer</span>
@@ -788,7 +718,7 @@ export default function Page() {
             </section>
           ) : null}
 
-          {predict && !compare && leftView==="simulation" ? (
+          {predict && leftView==="prediction" ? (
             <section className="nb-section">
               <div className="nb-subhead">
                 <h3 className="nb-h3">Predict before you play</h3>
@@ -867,41 +797,7 @@ export default function Page() {
             </section>
           ) : null}
 
-          {compare ? (
-            <section className="nb-section">
-              <div className="nb-subhead">
-                <h3 className="nb-h3">Compare a change</h3>
-                <button type="button" className="nb-link" onClick={toggleCompare}>
-                  Close
-                </button>
-              </div>
-              <p className="nb-note">Change a value to replay both simulations automatically. The original values stay fixed.</p>
-              <VariableSliders variables={adjustable} values={compareValues} onChange={applyCompareValue} />
-              <div className="nb-compare-results">
-                {answerList(baselineAnswers,"Original")}
-                {answerList(compareAnswers,"Changed")}
-              </div>
-            </section>
-          ) : null}
-
-          <section className="nb-section" id="nb-compose" hidden={compare || leftView!=="problem"}>
-            <div className="nb-subhead">
-              <h3 className="nb-h3">Problem input</h3>
-              <button
-                type="button"
-                className="nb-link"
-                aria-expanded={problemOpen}
-                onClick={() => setProblemOpen((previous) => !previous)}
-              >
-                {problemOpen ? "Hide" : "Give a problem"}
-              </button>
-            </div>
-            <div hidden={!problemOpen}>
-              <InputPanel key={restoredInput.version} initialProblemText={restoredInput.text} onStarted={handleStarted} onAnswers={handleAnswers} onFailed={handleFailed} onSolved={handleSolved} />
-            </div>
-          </section>
-
-          <details className="nb-section nb-details" hidden={compare || leftView!=="problem"}>
+          <details className="nb-section nb-details" hidden={leftView!=="problem"}>
             <summary>Model and assumptions</summary>
             {live?.problemText ? <p className="nb-solution">{live.problemText}</p> : null}
             {solution ? <p className="nb-solution">{solution}</p> : null}
@@ -911,22 +807,61 @@ export default function Page() {
             </p>
           </details>
 
-          {notice && !compare && leftView==="problem" ? (
+          {notice && leftView==="problem" ? (
             <p className="nb-notice" role="status">
               {notice}
             </p>
           ) : null}
-          {prepared.warnings.length > 0 && !compare && leftView==="problem" ? (
+          {prepared.warnings.length > 0 && leftView==="problem" ? (
             <p className="nb-notice nb-warn" role="status">
               Scene warnings: {prepared.warnings.join(" ")}
             </p>
           ) : null}
-          {editError && !compare && leftView==="variables" ? (
+          {editError && leftView==="variables" ? (
             <p className="nb-notice nb-warn" role="alert">
               {editError}
             </p>
           ) : null}
-          <section className="nb-section" hidden={compare || leftView!=="simulation"} aria-label="Simulation controls">
+          {live ? <>              <section className="nb-section nb-params" id="nb-variables" hidden={leftView!=="variables"}>
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">Variables</h3>
+                </div>
+                <VariableSliders
+                  variables={live?.variables ?? []}
+                  values={values}
+                  onChange={changeValue}
+                />
+              </section>
+
+              <section className="nb-section nb-instruction" hidden={leftView!=="variables"}>
+                <div className="nb-subhead">
+                  <h3 className="nb-h3">Change this scene</h3>
+                </div>
+                <label className="nb-field" htmlFor="edit-instruction">
+                  <span>Instruction</span>
+                </label>
+                <textarea
+                  id="edit-instruction"
+                  rows={2}
+                  maxLength={1000}
+                  placeholder="make the ramp steeper"
+                  value={editText}
+                  onChange={(event) => setEditText(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="nb-btn nb-btn-primary nb-btn-wide"
+                  disabled={editBusy || editText.trim().length === 0}
+                  onClick={runEdit}
+                >
+                  {editBusy ? "Applying the change" : "Apply the change"}
+                </button>
+              </section></> : null}
+          </div>
+        </aside>
+
+        <main className={`nb-workspace${view==="video" ? " nb-video-open" : ""}`}>
+          <section className="nb-section" aria-label="Simulation controls">
           <div className="nb-toolbar">
             <div className="nb-modes" role="group" aria-label="View mode">
               <button
@@ -966,9 +901,6 @@ export default function Page() {
                 </option>
               ))}
             </select>
-            <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={compare} onClick={toggleCompare} disabled={!live}>
-              {compare ? "Close comparison" : "Compare a change"}
-            </button>
             <button type="button" className="nb-btn nb-btn-ghost" aria-pressed={predict} onClick={togglePredict} disabled={!live}>
               {predict ? "Hide prediction" : "Predict"}
             </button>
@@ -995,62 +927,7 @@ export default function Page() {
                 onMute={setMuted}
                 onShots={setShots}
               /> : null}          </section>
-          {compare && live ? <section className="nb-section" aria-label="Comparison playback"><Timeline
-                duration={duration}
-                time={time}
-                playing={playing}
-                speed={speed}
-                muted={muted}
-                narrationReady={narrationReady}
-                shots={shots}
-                playBlocked={guessMissing}
-                onPlay={togglePlay}
-                onPause={() => setPlaying(false)}
-                onSeek={seek}
-                onSpeed={setSpeed}
-                onReset={reset}
-                onMute={setMuted}
-                onShots={setShots}
-              /></section> : null}
-          {live ? <>              <section className="nb-section nb-params" id="nb-variables" hidden={compare || leftView!=="variables"}>
-                <div className="nb-subhead">
-                  <h3 className="nb-h3">{compare ? "Changed variables" : "Variables"}</h3>
-                </div>
-                <VariableSliders
-                  variables={live?.variables ?? []}
-                  values={compare ? compareValues : values}
-                  onChange={changeValue}
-                />
-              </section>
 
-              <section className="nb-section nb-instruction" hidden={compare || leftView!=="variables"}>
-                <div className="nb-subhead">
-                  <h3 className="nb-h3">Change this scene</h3>
-                </div>
-                <label className="nb-field" htmlFor="edit-instruction">
-                  <span>Instruction</span>
-                </label>
-                <textarea
-                  id="edit-instruction"
-                  rows={2}
-                  maxLength={1000}
-                  placeholder="make the ramp steeper"
-                  value={editText}
-                  onChange={(event) => setEditText(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="nb-btn nb-btn-primary nb-btn-wide"
-                  disabled={editBusy || editText.trim().length === 0}
-                  onClick={runEdit}
-                >
-                  {editBusy ? "Applying the change" : "Apply the change"}
-                </button>
-              </section></> : null}
-          </div>
-        </aside>
-
-        <main className="nb-workspace">
 
 
           <div className="nb-viewport">
@@ -1074,50 +951,6 @@ export default function Page() {
                       Reload the preset
                     </button>
                   </div>
-                </div>
-              ) : compare ? (
-                <div className="nb-compare">
-                  <figure className="nb-stage-figure">
-                    <div className="nb-stage" id="simulation">
-                      <SceneCanvas
-                        scene={live}
-                        values={baseline ?? values}
-                        playing={playing}
-                        time={time}
-                        speed={speed}
-                        onTime={handleTime}
-                        onComplete={handleComplete}
-                        onLoop={handleLoop}
-                        shot={shot}
-                        onManualOrbit={() => setManual(true)}
-                        sharedClock={sharedClock}
-                        restart={playbackRevision}
-                        highlight={highlight}
-                      />
-                    </div>
-                    <figcaption className="nb-stage-caption">Original, the values as they were</figcaption>
-                  </figure>
-                  <figure className="nb-stage-figure">
-                    <div className="nb-stage">
-                      <SceneCanvas
-                        scene={live}
-                        values={compareValues}
-                        playing={playing}
-                        time={time}
-                        speed={speed}
-                        onTime={() => undefined}
-                        onComplete={() => undefined}
-                        onLoop={() => undefined}
-                        shot={shot}
-                        onManualOrbit={() => setManual(true)}
-                        sharedClock={sharedClock}
-                        restart={playbackRevision}
-                        follower
-                        highlight={highlight}
-                      />
-                    </div>
-                    <figcaption className="nb-stage-caption">Changed, the same scene and the same clock</figcaption>
-                  </figure>
                 </div>
               ) : (
                 <div className="nb-stage" id="simulation">

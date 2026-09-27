@@ -14,6 +14,7 @@ import {readSolveStream} from "@/lib/solve-stream";
 export type { SolveResult };
 
 export interface InputPanelProps {
+  subject?: "physics"|"chemistry"|"mathematics";
   initialProblemText?: string;
   onStarted: (problemText: string) => string;
   onAnswers: (result: Omit<SolveResult,"scene">, pageId: string) => void;
@@ -95,7 +96,7 @@ async function readFailure(response: Response): Promise<string> {
   return `The service answered ${response.status} without a reason. Try again.`;
 }
 
-export default function InputPanel({ initialProblemText = "", onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
+export default function InputPanel({ initialProblemText = "", subject = "physics", onStarted, onAnswers, onFailed, onSolved }: InputPanelProps) {
   const [problemText, setProblemText] = useState(initialProblemText);
   const [image, setImage] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
@@ -208,7 +209,7 @@ export default function InputPanel({ initialProblemText = "", onStarted, onAnswe
       const response = await fetch("/api/solve", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept":"application/x-ndjson" },
-        body: JSON.stringify(text ? { problemText: text, image: image ?? undefined } : { image }),
+        body: JSON.stringify({ problemText: text || undefined, image: image ?? undefined, subject }),
         signal: controller.signal,
       });
       if (!response.ok) {
@@ -258,7 +259,7 @@ export default function InputPanel({ initialProblemText = "", onStarted, onAnswe
       inFlight.current = false;
       setBusy(false);
     }
-  }, [image, onStarted, onAnswers, onFailed, onSolved, problemText]);
+  }, [image, onStarted, onAnswers, onFailed, onSolved, problemText, subject]);
 
   const canSolve = (problemText.trim().length > 0 || image !== null) && !busy;
 

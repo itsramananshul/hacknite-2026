@@ -123,5 +123,5 @@ export async function runOllamaPipeline(request: PipelineRequest, env: EnvLike =
     throw error;
   }
 }
-export const solveWithOllama=(request:SolveRequest,onSolved?:(result:Omit<SolveResult,"scene">)=>void)=>runOllamaPipeline({problemText:request.problemText,image:request.image},process.env,fetch,onSolved);
+export const solveWithOllama=(request:SolveRequest,onSolved?:(result:Omit<SolveResult,"scene">)=>void)=>runOllamaPipeline({problemText:request.problemText,image:request.image,subject:request.subject},process.env,fetch,onSolved);
 export const editWithOllama=(scene:SceneScript,instruction:string)=>runOllamaPipeline({problemText:scene.problemText,image:null,currentScene:scene,instruction});

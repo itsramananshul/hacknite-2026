@@ -40,6 +40,8 @@ export const RESERVED_IDENTIFIERS: readonly string[] = [
   "min",
   "max",
   "exp",
+  "log",
+  "log10",
 ];
 
 export const SHAPES = [
