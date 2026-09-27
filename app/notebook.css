@@ -1308,6 +1308,12 @@
 .nb-notebook .nb-param-grid { grid-template-columns: 1fr; }
 .nb-notebook .timeline-tail { margin-left: 0; }
 .nb-compare-results { display: grid; gap: 18px; margin-top: 20px; }
+.nb-notebook-switch { border: 0; background: transparent; color: var(--nb-muted); font: inherit; cursor: pointer; text-align: left; }
+.nb-page-list { display: grid; gap: 8px; margin: 12px 0 24px; }
+.nb-page-link { display: grid; gap: 4px; padding: 12px; text-align: left; border: 1px solid var(--nb-line); border-radius: 8px; background: #fff; color: var(--nb-ink); cursor: pointer; overflow-wrap: anywhere; }
+.nb-page-link small { color: var(--nb-muted); }
+.nb-panel-content { display: flex; flex-direction: column; gap: 24px; }
+.nb-panel-content[hidden] { display: none; }
 
 @media (min-width: 901px) {
   .nb-workspace { overflow: hidden; min-height: 0; }

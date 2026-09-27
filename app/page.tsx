@@ -3,6 +3,8 @@
 import dynamic from "next/dynamic";
 import { compressToEncodedURIComponent, decompressFromEncodedURIComponent } from "lz-string";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import NotebookLibrary from "@/components/NotebookLibrary";
+import {EMPTY_LIBRARY, readLibrary, writeLibrary, upsertPage, renameNotebook, type Library, type Subject} from "@/lib/notebooks";
 import InputPanel, { type SolveResult } from "@/components/InputPanel";
 import ExplanationVideo from "@/components/ExplanationVideo";
 import StepsPanel, { activeStepIndex } from "@/components/StepsPanel";
@@ -115,16 +117,31 @@ function IconVariables() {
 }
 
 export default function Page() {
+  const [library,setLibrary] = useState<Library>(EMPTY_LIBRARY);
+  const [notebookId,setNotebookId] = useState("physics");
+  const notebookRef = useRef("physics");
+  const [libraryReady,setLibraryReady] = useState(false);
+  const [libraryOpen,setLibraryOpen] = useState(false);
+  const [storageError,setStorageError] = useState<string|null>(null);
+  const activeNotebook = library.notebooks.find(n=>n.id===notebookId) ?? library.notebooks[0];
+  const pendingValues = useRef<Record<string,number>|null>(null);
   const [presetKey, setPresetKey] = useState<PresetKey>("projectile");
   const [scene, setScene] = useState<SceneScript | null>(() => presets.projectile);
   const [solution, setSolution] = useState("");
   const [questionPage,setQuestionPage] = useState<{
-    id:string; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
+    id:string; notebookId?:string; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
     answers:Omit<SolveResult,"scene">|null; error:string|null;
   }|null>(null);
   const activeQuestion = useRef<string|null>(null);
   const [restoredInput,setRestoredInput] = useState({version:0,text:""});
   useEffect(()=>{
+    try {
+      const loaded=readLibrary(localStorage);
+      setLibrary(loaded);
+      const selected=localStorage.getItem("chalk-active-notebook");
+      if(selected && loaded.notebooks.some(n=>n.id===selected)){notebookRef.current=selected;setNotebookId(selected);}
+    } catch {setStorageError("Browser storage is unavailable. Pages cannot be saved on this device.");}
+    setLibraryReady(true);
     const restore=()=>{
       const id=new URL(window.location.href).searchParams.get("page");
       if(!id) {
@@ -140,12 +157,18 @@ export default function Page() {
       }
       if(activeQuestion.current===id) return;
       try {
-        const raw=sessionStorage.getItem(`chalk-page:${id}`);
+        const raw=localStorage.getItem(`chalk-page:${id}`) ?? sessionStorage.getItem(`chalk-page:${id}`);
         if(!raw) return;
         const saved=JSON.parse(raw);
         if(saved.questionPage?.id!==id || typeof saved.questionPage.problemText!=="string") return;
         const restoredScene=saved.scene ? validateSceneScript(saved.scene).scene : null;
         activeQuestion.current=id;
+        const restoredNotebook=saved.questionPage.notebookId ?? "physics";
+        notebookRef.current=restoredNotebook;
+        setNotebookId(restoredNotebook);
+        pendingValues.current=saved.values ?? null;
+        setLibraryOpen(false);
+        setLeftView("problem");
         setQuestionPage({...saved.questionPage,...(!restoredScene && ["solving","building"].includes(saved.questionPage.status) ? {
           status:"error",error:"This page was reopened before its simulation finished. Submit the problem again to generate it."
         } : {})});
@@ -165,14 +188,30 @@ export default function Page() {
     };
     restore();
     window.addEventListener("popstate",restore);
-    return()=>window.removeEventListener("popstate",restore);
+    const syncLibrary=(event:StorageEvent)=>{
+      if(event.key==="chalk-library:v1") {
+        try {setLibrary(readLibrary(localStorage));} catch { /* Keep the current library when storage is unavailable. */ }
+      }
+    };
+    window.addEventListener("storage",syncLibrary);
+    return()=>{window.removeEventListener("popstate",restore);window.removeEventListener("storage",syncLibrary);};
   },[]);
-  useEffect(()=>{
-    if(!questionPage) return;
-    try {sessionStorage.setItem(`chalk-page:${questionPage.id}`,JSON.stringify({questionPage,scene,solution}));}
-    catch { /* Storage limits do not prevent a new problem from being solved. */ }
-  },[questionPage,scene,solution]);
   const [values, setValues] = useState<Record<string, number>>(() => initialValues(presets.projectile));
+  useEffect(()=>{
+    if(!libraryReady || !questionPage) return;
+    try {
+      localStorage.setItem(`chalk-page:${questionPage.id}`,JSON.stringify({questionPage,scene,solution,values}));
+      setLibrary(previous=>upsertPage(previous,{id:questionPage.id,notebookId:questionPage.notebookId ?? "physics",
+        title:scene?.title ?? (questionPage.problemText.slice(0,120) || "Problem from a photo"),
+        status:questionPage.status,updatedAt:new Date().toISOString()}));
+      setStorageError(null);
+    } catch {setStorageError("This page could not be saved. Browser storage may be full; keep this tab open.");}
+  },[libraryReady,questionPage,scene,solution,values]);
+  useEffect(()=>{
+    if(!libraryReady) return;
+    try {writeLibrary(localStorage,library);localStorage.setItem("chalk-active-notebook",notebookId);}
+    catch {setStorageError("Notebook changes could not be saved in browser storage.");}
+  },[libraryReady,library,notebookId]);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [view, setView] = useState<"simulation" | "video">("simulation");
@@ -302,7 +341,11 @@ export default function Page() {
 
   useEffect(() => {
     if (!live) return;
-    setValues(initialValues(live));
+    const restored=pendingValues.current;
+    pendingValues.current=null;
+    const defaults=initialValues(live);
+    if(restored) for(const variable of live.variables){const value=restored[variable.name];if(Number.isFinite(value) && value>=variable.min && value<=variable.max) defaults[variable.name]=value;}
+    setValues(defaults);
     setTime(0);
     setPlaying(false);
     setManual(false);
@@ -457,6 +500,7 @@ export default function Page() {
 
   const openProblem = useCallback(() => {
     setLeftView("problem");
+    setLibraryOpen(false);
     setCompare(false);
     setProblemOpen(true);
     requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
@@ -466,7 +510,8 @@ export default function Page() {
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
     activeQuestion.current=id;
     setLeftView("problem");
-    setQuestionPage({id,problemText,status:"solving",answers:null,error:null});
+    setLibraryOpen(false);
+    setQuestionPage({id,notebookId:notebookRef.current,problemText,status:"solving",answers:null,error:null});
     setScene(null);
     setSolution("");
     setPlaying(false);
@@ -630,7 +675,7 @@ export default function Page() {
         </div>
         <span className="nb-header-divider" aria-hidden="true" />
         <div className="nb-crumbs">
-          <span className="nb-crumb">Physics notebook</span>
+          <button type="button" className="nb-notebook-switch" onClick={()=>{setLibraryOpen(!libraryOpen);setCompare(false);}} aria-expanded={libraryOpen}>{activeNotebook.name}</button>
           <span className="nb-topic">{live?.title ?? (questionPage ? "New physics problem" : "Physics notebook")}</span>
         </div>
         <div className="nb-header-actions">
@@ -647,25 +692,32 @@ export default function Page() {
 
       <div className="nb-body">
         <nav className="nb-rail" aria-label="Notebook sections">
-          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={!compare && leftView==="problem"} onClick={()=>{setLeftView("problem");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Problem" aria-pressed={!compare && leftView==="problem"} onClick={()=>{setLibraryOpen(false);setLeftView("problem");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconProblem />
             <span className="nb-rail-label">Problem</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={!compare && leftView==="derivation"} onClick={()=>{setLeftView("derivation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Derivation" aria-pressed={!compare && leftView==="derivation"} onClick={()=>{setLibraryOpen(false);setLeftView("derivation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconDerivation />
             <span className="nb-rail-label">Derivation</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Simulation" aria-pressed={!compare && leftView==="simulation"} onClick={()=>{setLeftView("simulation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Simulation" aria-pressed={!compare && leftView==="simulation"} onClick={()=>{setLibraryOpen(false);setLeftView("simulation");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconSimulation />
             <span className="nb-rail-label">Simulation</span>
           </button>
-          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={!compare && leftView==="variables"} onClick={()=>{setLeftView("variables");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
+          <button type="button" className="nb-rail-item" title="Variables" aria-pressed={!compare && leftView==="variables"} onClick={()=>{setLibraryOpen(false);setLeftView("variables");setCompare(false);if(view!=="simulation")setView("simulation");document.querySelector(".nb-notebook")?.scrollTo({top:0});}}>
             <IconVariables />
             <span className="nb-rail-label">Variables</span>
           </button>
         </nav>
 
         <aside className="nb-notebook" aria-label="Notebook">
+          {storageError ? <p role="alert" className="nb-notice nb-warn">{storageError}</p> : null}
+          {libraryOpen ? <NotebookLibrary library={library} activeId={notebookId}
+            onSelect={id=>{notebookRef.current=id;setNotebookId(id);}}
+            onRename={(id,name)=>setLibrary(previous=>renameNotebook(previous,id,name))}
+            onCreate={(name,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);}}
+            onOpen={id=>{const url=new URL(window.location.href);url.searchParams.set("page",id);url.hash="nb-problem";window.history.pushState(null,"",url);activeQuestion.current=null;window.dispatchEvent(new PopStateEvent("popstate"));}} /> : null}
+          <div hidden={libraryOpen} className="nb-panel-content">
           <section className="nb-section" id="nb-problem" hidden={compare || leftView!=="problem"}>
             <p className="nb-eyebrow">Experiment</p>
             <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{live?.title ?? "New physics problem"}</h1>
@@ -995,6 +1047,7 @@ export default function Page() {
                   {editBusy ? "Applying the change" : "Apply the change"}
                 </button>
               </section></> : null}
+          </div>
         </aside>
 
         <main className="nb-workspace">
