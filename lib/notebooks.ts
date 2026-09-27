@@ -1,6 +1,6 @@
 export type Subject = "physics" | "chemistry" | "mathematics";
 export interface Notebook { id: string; name: string; subject: Subject }
-export interface PageEntry { id: string; notebookId: string; title: string; status: string; updatedAt: string }
+export interface PageEntry { id: string; notebookId: string; title: string; status: string; updatedAt: string; archivedAt?:string }
 export interface Library { notebooks: Notebook[]; pages: PageEntry[] }
 /** A fresh device should open a notebook with questions, not an empty namesake. */
 export function initialNotebook(library:Library,selected:string|null):string {
@@ -13,7 +13,7 @@ export function initialNotebook(library:Library,selected:string|null):string {
     }
     return chosen.id;
   }
-  const newest=[...library.pages].sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).find(p=>library.notebooks.some(n=>n.id===p.notebookId));
+  const newest=[...library.pages].filter(p=>!p.archivedAt).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)).find(p=>library.notebooks.some(n=>n.id===p.notebookId));
   return newest?.notebookId ?? library.notebooks[0]?.id ?? "";
 }
 export const EMPTY_LIBRARY: Library = {notebooks:[],pages:[]};

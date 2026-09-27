@@ -299,6 +299,12 @@ try:
         if not narration:
             (directory/"narration-error.log").write_text(result.stderr[-4000:],encoding="utf-8")
             raise RuntimeError("Narration could not be generated. Please retry the video; the speech error was recorded locally.")
+    elif shutil.which("espeak-ng"):
+        for index,segment in enumerate(segments):
+            text_file=directory/f"voice-{index}.txt"
+            text_file.write_text(segment,encoding="utf-8")
+            subprocess.run(["espeak-ng","-v","en-us","-s","155","-f",str(text_file),"-w",str(directory/f"voice-{index}.wav")],check=True,capture_output=True,timeout=60)
+        narration=True
     status(status="rendering",message="Narration ready. Rendering video frames." if narration else "Rendering video frames with written explanations.")
     with tempconfig({"media_dir":str(directory/"media"),"output_file":"explanation","pixel_width":1280,"pixel_height":720,"frame_rate":24,"disable_caching":True,"verbosity":"WARNING"}):
         movie=Explanation()

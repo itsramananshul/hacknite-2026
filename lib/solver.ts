@@ -11,7 +11,7 @@ export function solverProvider(env: EnvLike = process.env): "opencode" | "ollama
 
 export function solveProblem(request: SolveRequest,onSolved?:(result:Omit<SolveResult,"scene">)=>void) {
   if (solverProvider() === "ollama") return solveWithOllama(request,onSolved);
-  return solverProvider() === "opencode" ? solveWithOpenCode(request,{onSolved}) : solveGemini(request);
+  return solverProvider() === "opencode" ? solveWithOpenCode(request,{onSolved}) : solveGemini(request,onSolved);
 }
 
 export function editProblem(scene: SceneScript, instruction: string) {

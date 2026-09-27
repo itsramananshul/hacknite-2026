@@ -5,7 +5,7 @@ import type { SceneScript } from "@/lib/schema";
 
 import {readVideoReference,type SavedVideo} from "@/lib/video-reference";
 export type {SavedVideo} from "@/lib/video-reference";
-export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,onJob}:{scene:SceneScript;values:Record<string,number>;solution:string;savedJob?:SavedVideo;onJob?:(job:SavedVideo)=>void}) {
+export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,savedVideos=[],onJob}:{scene:SceneScript;values:Record<string,number>;solution:string;savedJob?:SavedVideo;savedVideos?:SavedVideo[];onJob?:(job:SavedVideo)=>void}) {
   const savedJob=readVideoReference(rawJob);
   const [job,setJob]=useState<string|null>(savedJob?.id ?? null);
   const [status,setStatus]=useState(savedJob ? "rendering" : "idle");
@@ -48,6 +48,7 @@ export default function ExplanationVideo({scene,values,solution,savedJob:rawJob,
     finally{pending.current=false;}
   };
   return <section className="explanation-video" aria-label="Explanation video">
+    {savedVideos.length>1?<label className="nb-field">Saved videos<select className="nb-input" aria-label="Saved videos" value={job ?? ""} onChange={event=>{const selected=savedVideos.find(video=>video.id===event.target.value);if(selected){setJob(selected.id);setCaptured(selected.fingerprint);setStatus("rendering");}}}>{savedVideos.map((video,index)=><option key={video.id} value={video.id}>Video {index+1}</option>)}</select></label>:null}
     <div className="video-heading"><div><h2>Explanation video</h2><p>A narrated film of the problem, reasoning, equations, and answer.</p></div>
     <button type="button" className="btn btn-primary" disabled={status==="rendering"} onClick={generate}>{status==="rendering"?"Generating video…":job?"Generate a new video":"Generate explanation video"}</button></div>
     {message?<p role={status==="error"?"alert":"status"}>{message}</p>:null}

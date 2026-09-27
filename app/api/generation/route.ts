@@ -14,16 +14,18 @@ export async function POST(request:Request){
     const body=await readRequestJson(request) as Record<string,unknown>;
     if(typeof body.pageId!=="string"||!/^[a-zA-Z0-9-]{1,100}$/.test(body.pageId))return Response.json({error:"A saved question is required."},{status:400});
     const {pageId,notebookId,...input}=body;
-    const parsed=input.scene?{edit:parseEditRequest(input)}:{request:parseSolveRequest(input)};
     const client=userClient(token);
     const existing=await client.from("question_pages").select("payload,notebook_id,title").eq("user_id",user.id).eq("id",pageId).maybeSingle();
     if(existing.error)throw new Error(existing.error.message);
+    // Keep the original upload for retry even if vision or simulation generation fails.
+    const savedImage=existing.data?.payload?.questionPage?.sourceImage;
+    const parsed=input.scene?{edit:parseEditRequest(input)}:{request:parseSolveRequest({...input,image:input.image ?? savedImage})};
     const bookId=existing.data?.notebook_id ?? notebookId;
     if(typeof bookId!=="string")return Response.json({error:"Choose a notebook before starting generation."},{status:400});
     const book=await client.from("notebooks").select("id").eq("user_id",user.id).eq("id",bookId).maybeSingle();
     if(book.error || !book.data)return Response.json({error:"This notebook is not available in your account."},{status:404});
     const payload=existing.data?.payload ?? {questionPage:{id:pageId,notebookId:bookId,problemText:typeof input.problemText==="string"?input.problemText:"",answers:null,error:null},scene:null,values:{},solution:""};
-    payload.questionPage={...payload.questionPage,status:"solving",error:null};
+    payload.questionPage={...payload.questionPage,...(!input.scene && (input.image || savedImage)?{sourceImage:input.image || savedImage}:{}),status:"solving",error:null};
     const saved=await client.from("question_pages").upsert({user_id:user.id,id:pageId,notebook_id:bookId,title:existing.data?.title ?? (payload.questionPage.problemText.slice(0,120)||"Problem from a photo"),status:"solving",payload,updated_at:new Date().toISOString()},{onConflict:"user_id,id"});
     if(saved.error)throw new Error(saved.error.message);
     const generation={userId:user.id,pageId:pageId as string,...parsed};

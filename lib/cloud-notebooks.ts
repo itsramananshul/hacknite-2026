@@ -48,7 +48,8 @@ export async function loadCloudLibrary(client:SupabaseClient,userId:string,cache
   for(const row of pages){
     const id=row.id as string;
     if(!pending.pages[id])cache.setItem(`chalk-page:${id}`,JSON.stringify(row.payload));
-    entries.set(id,{id,notebookId:row.notebook_id as string,title:row.title as string,status:row.status as string,updatedAt:row.updated_at as string});
+    const saved=row.payload as SavedPage;
+    entries.set(id,{id,notebookId:row.notebook_id as string,title:row.title as string,status:row.status as string,updatedAt:row.updated_at as string,...(typeof saved.questionPage.archivedAt==="string"?{archivedAt:saved.questionPage.archivedAt}:{})});
   }
   for(const {entry,payload} of Object.values(pending.pages)){entries.set(entry.id,entry);cache.setItem(`chalk-page:${entry.id}`,JSON.stringify(payload));}
   cache.setItem(PENDING,JSON.stringify(pending));

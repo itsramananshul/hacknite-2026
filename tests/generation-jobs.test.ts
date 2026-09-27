@@ -47,3 +47,13 @@ test("a finished worker cannot recreate a deleted question",async()=>{
   await publishGeneration(client as unknown as SupabaseClient,job);
   assert.equal((await readGeneration(userId,pageId))?.published,true);
 });
+
+test("simulation failure still saves the image transcription and solution without losing versions",async()=>{
+ const payload={questionPage:{id:"photo",problemText:"",title:"My chemistry question",status:"building",sourceImage:"original upload",simulations:[{id:"old"}],archivedAt:"2026-09-27"},scene:{title:"Old simulation"},solution:""};
+ let update:any;
+ function chain(result:any):any{return {eq:()=>chain(result),maybeSingle:async()=>result,then:(resolve:any)=>Promise.resolve(result).then(resolve)};}
+ const client={from:()=>({select:()=>chain({data:{payload},error:null}),update:(body:any)=>{update=body;return chain({error:null});}})} as unknown as SupabaseClient;
+ await publishGeneration(client,{id:"job",userId:"owner",pageId:"photo",status:"error",updatedAt:"now",error:"Simulation timeout",answers:{interpretedProblem:"Find the buffer pH",solutionText:"The worked solution",answers:[],warnings:[]}},async()=>{});
+ assert.equal(update.payload.questionPage.problemText,"Find the buffer pH");assert.equal(update.payload.solution,"The worked solution");assert.equal(update.payload.questionPage.status,"error");
+ assert.deepEqual(update.payload.questionPage.simulations,[{id:"old"}]);assert.equal(update.payload.questionPage.sourceImage,"original upload");assert.equal(update.title,"My chemistry question");assert.equal(update.payload.questionPage.archivedAt,"2026-09-27");
+});

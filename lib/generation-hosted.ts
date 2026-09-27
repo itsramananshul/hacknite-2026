@@ -18,8 +18,10 @@ export async function hostedGenerations(client:SupabaseClient,userId:string,page
     const run=getRun(row.run_id);
     const status=await run.status;
     if(status==="completed"){
-      const result=await getRun<import("./gemini").SolveResult>(row.run_id).returnValue;
-      const completed:GenerationJob={...job,status:"complete",result,updatedAt:new Date().toISOString()};
+      const output=await getRun<{result?:import("./gemini").SolveResult;answers?:Omit<import("./gemini").SolveResult,"scene">;error?:string}>(row.run_id).returnValue;
+      // Accept earlier runs that predate the staged workflow response.
+      const result=output.result ?? ("scene" in output?output as unknown as import("./gemini").SolveResult:undefined);
+      const completed:GenerationJob={...job,status:result?"complete":"error",result,answers:output.answers,error:output.error,updatedAt:new Date().toISOString()};
       await saveHostedGeneration(client,completed);return completed;
     }
     if(status==="failed"||status==="cancelled"){

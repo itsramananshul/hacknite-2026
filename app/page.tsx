@@ -20,6 +20,7 @@ import Timeline from "@/components/Timeline";
 import UiIcon from "@/components/UiIcon";
 import {keepSimulation,type SimulationVersion} from "@/lib/simulation-history";
 import {sceneShareLink} from "@/lib/share-link";
+import {editQuestionMetadata} from "@/lib/question-metadata";
 import {withParameterRanges} from "@/lib/parameter-ranges";
 import {motionPresentation} from "@/lib/motion-presentation";
 import VariableSliders from "@/components/VariableSliders";
@@ -135,8 +136,8 @@ export default function Page() {
   const [scene, setScene] = useState<SceneScript | null>(() => presets.projectile);
   const [solution, setSolution] = useState("");
   const [questionPage,setQuestionPage] = useState<{
-    id:string; notebookId?:string; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
-    answers:Omit<SolveResult,"scene">|null; error:string|null; video?:SavedVideo; simulations?:SimulationVersion[]; selectedSimulation?:string;
+    id:string; notebookId?:string; title?:string; archivedAt?:string; sourceImage?:string|null; problemText:string; status:"solving"|"building"|"ready"|"error"|"answer-only";
+    answers:Omit<SolveResult,"scene">|null; error:string|null; video?:SavedVideo; videoHistory?:SavedVideo[]; simulations?:SimulationVersion[]; selectedSimulation?:string;
   }|null>(null);
   const activeQuestion = useRef<string|null>(null);
   const generatingHere = useRef<string|null>(null);
@@ -240,8 +241,8 @@ export default function Page() {
       cache.setItem(`chalk-page:${questionPage.id}`,JSON.stringify(payload));
       savedPageSignature.current=signature;
       const entry={id:questionPage.id,notebookId:questionPage.notebookId ?? "physics",
-        title:scene?.title ?? (questionPage.problemText.slice(0,120) || "Problem from a photo"),
-        status:questionPage.status,updatedAt:new Date().toISOString()};
+        title:questionPage.title ?? scene?.title ?? (questionPage.problemText.slice(0,120) || "Problem from a photo"),
+        status:questionPage.status,archivedAt:questionPage.archivedAt,updatedAt:new Date().toISOString()};
       const notebook=library.notebooks.find(n=>n.id===entry.notebookId);
       if(accountId && notebook)queuePage(cache,entry,payload,notebook);
       setLibrary(previous=>upsertPage(previous,entry));
@@ -524,7 +525,7 @@ export default function Page() {
     requestAnimationFrame(() => document.getElementById("chalk-problem")?.focus());
   }, []);
 
-  const handleStarted = useCallback((problemText:string) => {
+  const handleStarted = useCallback((problemText:string,sourceImage?:string|null) => {
     if(!libraryReady)throw new Error("Your notebooks are still loading. Please try again in a moment.");
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,9)}`;
     activeQuestion.current=id;
@@ -532,7 +533,7 @@ export default function Page() {
     setLeftView("problem");
     setLibraryOpen(false);
     setProblemOpen(false);
-    setQuestionPage({id,notebookId:notebookRef.current,problemText,status:"solving",answers:null,error:null});
+    setQuestionPage({id,notebookId:notebookRef.current,problemText,sourceImage,status:"solving",answers:null,error:null});
     setScene(null);
     setSolution("");
     setPlaying(false);
@@ -565,7 +566,7 @@ export default function Page() {
   const handleAnswers = useCallback((result:Omit<SolveResult,"scene">,id:string)=>{
     if(activeQuestion.current!==id) return;
     setSolution(result.solutionText);
-    setQuestionPage(previous=>previous?.id===id ? {...previous,status:"building",answers:result} : previous);
+    setQuestionPage(previous=>previous?.id===id ? {...previous,problemText:result.interpretedProblem?.trim() || previous.problemText,status:"building",answers:result} : previous);
   },[]);
 
   const handleFailed = useCallback((error:string,id:string)=>{
@@ -580,7 +581,7 @@ export default function Page() {
     setQuestionPage(previous=>{
       if(previous?.id!==id)return previous;
       const history=result.scene ? keepSimulation(previous.simulations ?? [],result.scene,initialValues(result.scene),result.solutionText) : null;
-      return {...previous,status:result.scene?"ready":"answer-only",answers:result,error:null,...(history?{simulations:history.versions,selectedSimulation:history.id}:{})};
+      return {...previous,problemText:result.interpretedProblem?.trim() || previous.problemText,status:result.scene?"ready":"answer-only",answers:result,error:null,...(history?{simulations:history.versions,selectedSimulation:history.id}:{})};
     });
     setSolution(result.solutionText);
     if (result.scene) {
@@ -614,7 +615,7 @@ export default function Page() {
   const regenerateSimulation=useCallback(async()=>{
     if(retryingSimulation.current || !questionPage)return;
     const text=questionPage.problemText.trim() || questionPage.answers?.interpretedProblem || scene?.problemText;
-    if(!text){openProblem();setNotice("Please upload the photo again to retry this problem.");return;}
+    if(!text && !questionPage.sourceImage){openProblem();setNotice("Please upload the photo again to retry this problem.");return;}
     const id=questionPage.id;
     retryingSimulation.current=true;generatingHere.current=id;savedPageSignature.current="";
     setPlaying(false);setScene(null);setView("simulation");
@@ -625,7 +626,7 @@ export default function Page() {
     });
     try{
       const reference=scene ?? questionPage.simulations?.find(v=>v.id===questionPage.selectedSimulation)?.scene;
-      const result=await generateInBackground(id,reference && activeNotebook.subject!=="mathematics" ? {scene:withParameterRanges(reference,values),instruction:"Regenerate the explanation simulation for this same problem. Preserve the existing apparatus, colors, physical layout and camera composition. Do not add decorative supports or oversized vectors. Improve clarity and ensure all adjustable values drive the equations and geometry. Keep the given values and requested answers."}:{problemText:text.slice(0,6000),subject:activeNotebook.subject,notebookId:questionPage.notebookId},result=>handleAnswers(result,id));
+      const result=await generateInBackground(id,reference && activeNotebook.subject!=="mathematics" ? {scene:withParameterRanges(reference,values),instruction:"Regenerate the explanation simulation for this same problem. Preserve the existing apparatus, colors, physical layout and camera composition. Do not add decorative supports or oversized vectors. Improve clarity and ensure all adjustable values drive the equations and geometry. Keep the given values and requested answers."}:{problemText:text?.slice(0,6000),image:questionPage.sourceImage ?? undefined,subject:activeNotebook.subject,notebookId:questionPage.notebookId},result=>handleAnswers(result,id));
       handleSolved(result,id);
     }catch(error){handleFailed(describe(error,"The connection ended before the simulation finished. Retry generation."),id);}
     finally{retryingSimulation.current=false;}
@@ -678,7 +679,7 @@ export default function Page() {
   }, [editText, editBusy, scene, values,solution,questionPage,handleAnswers,handleSolved]);
 
   const blurb =
-    (questionPage && !live ? questionPage.problemText || "A problem from your photo." : "") ||
+    (questionPage ? questionPage.problemText || questionPage.answers?.interpretedProblem || "A problem from your photo." : "") ||
     firstSentence(live?.problemText?.trim() || "") ||
     presetList.find((item) => item.key === presetKey)?.blurb ||
     "Explore a projectile launched from a cliff.";
@@ -772,7 +773,7 @@ export default function Page() {
   };
   const selectNotebook=(id:string)=>{
     notebookRef.current=id;setNotebookId(id);setPlaying(false);
-    const page=library.pages.find(page=>page.notebookId===id);
+    const page=library.pages.find(page=>page.notebookId===id && !page.archivedAt);
     if(page)openSavedQuestion(page.id);
     else {activeQuestion.current=null;setQuestionPage(null);setScene(null);setSolution("");const url=new URL(window.location.href);url.searchParams.delete("page");url.hash="nb-notebooks";window.history.replaceState(null,"",url);}
     setLibraryOpen(true);
@@ -790,8 +791,24 @@ export default function Page() {
     setLibraryOpen(true);
   };
   const createNotebook=(name:string,subject:Subject)=>{const id=`notebook-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,6)}`;setLibrary(previous=>({...previous,notebooks:[...previous.notebooks,{id,name:name.trim(),subject}]}));notebookRef.current=id;setNotebookId(id);};
+  const changeQuestion=(id:string,change:{title?:string;removed?:boolean})=>{
+    try{
+      const entry=library.pages.find(p=>p.id===id);if(!entry)return;
+      const notebook=library.notebooks.find(n=>n.id===entry.notebookId);if(!notebook)return;
+      const cache=accountStorage(localStorage,accountId ?? null);
+      const raw=cache.getItem(`chalk-page:${id}`);if(!raw)throw new Error("Reopen this question before changing it.");
+      const current=id===questionPage?.id?{questionPage,scene,solution,values}:JSON.parse(raw);
+      const edited=editQuestionMetadata(entry,current,change);
+      cache.setItem(`chalk-page:${id}`,JSON.stringify(edited.payload));
+      if(accountId)queuePage(cache,edited.entry,edited.payload,notebook);
+      setLibrary(previous=>upsertPage(previous,edited.entry));setCloudRetry(n=>n+1);
+      if(id===questionPage?.id)setQuestionPage(previous=>previous?{...previous,title:edited.payload.questionPage.title as string|undefined,archivedAt:edited.entry.archivedAt}:previous);
+    }catch(error){setStorageError(describe(error,"This question could not be changed."));}
+  };
+  const renameQuestion=(id:string,title:string)=>changeQuestion(id,{title});
+  const archiveQuestion=(id:string,removed:boolean)=>changeQuestion(id,{removed});
   if(!accountId || !sessionReady || !libraryReady)return <AuthScreen checking={accountId===undefined} verifying={Boolean(accountId)} error={sessionError} />;
-  if(!library.notebooks.length)return <div className="nb-app"><header className="nb-header"><ChalkLogo/><div className="nb-header-actions"><button type="button" className="nb-btn nb-btn-ghost" onClick={()=>setAccountOpen(!accountOpen)}><UiIcon name="account"/><span>Account</span></button></div></header><main className="nb-library-onboarding">{accountOpen ? <AccountPanel onImport={importGuestPages}/> : <NotebookLibrary library={library} activeId="" cloud onSelect={()=>{}} onRename={()=>{}} onCreate={createNotebook} onOpen={()=>{}} onDelete={deleteNotebook}/>}{cloudStatus ? <p className="nb-note" role="status">{cloudStatus}</p> : null}</main></div>;
+  if(!library.notebooks.length)return <div className="nb-app"><header className="nb-header"><ChalkLogo/><div className="nb-header-actions"><button type="button" className="nb-btn nb-btn-ghost" onClick={()=>setAccountOpen(!accountOpen)}><UiIcon name="account"/><span>Account</span></button></div></header><main className="nb-library-onboarding">{accountOpen ? <AccountPanel onImport={importGuestPages}/> : <NotebookLibrary library={library} activeId="" cloud onSelect={()=>{}} onRename={()=>{}} onCreate={createNotebook} onOpen={()=>{}} onDelete={deleteNotebook} onRenameQuestion={renameQuestion} onArchiveQuestion={archiveQuestion}/>}{cloudStatus ? <p className="nb-note" role="status">{cloudStatus}</p> : null}</main></div>;
   return (
     <div className="nb-app">
       <header className="nb-header">
@@ -801,7 +818,7 @@ export default function Page() {
 
         <div className="nb-crumbs">
           <button type="button" className="nb-notebook-switch" onClick={()=>{setLibraryOpen(!libraryOpen);setAccountOpen(false);}} aria-expanded={libraryOpen}>{activeNotebook.name}</button>
-          <span className="nb-topic">{live?.title ?? (questionPage ? `New ${activeNotebook.subject} problem` : activeNotebook.name)}</span>
+          <span className="nb-topic">{questionPage?.title ?? live?.title ?? (questionPage ? `New ${activeNotebook.subject} problem` : activeNotebook.name)}</span>
         </div>
         <div className="nb-header-actions">
           <button type="button" className="nb-btn nb-btn-ghost" aria-expanded={accountOpen} onClick={()=>{setAccountOpen(!accountOpen);setLibraryOpen(false);}}><UiIcon name="account"/><span>Account</span></button>
@@ -849,12 +866,12 @@ export default function Page() {
             onSelect={selectNotebook}
             onRename={(id,name)=>setLibrary(previous=>renameNotebook(previous,id,name))}
             onCreate={createNotebook}
-            onOpen={openSavedQuestion} onDelete={deleteNotebook} /> : null}
+            onOpen={openSavedQuestion} onDelete={deleteNotebook} onRenameQuestion={renameQuestion} onArchiveQuestion={archiveQuestion} /> : null}
           <div hidden={libraryOpen || accountOpen} className="nb-panel-content">
           <section className="nb-section" id="nb-problem" hidden={leftView!=="problem"}>
             <p className="nb-eyebrow">Experiment</p>
-            <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{live?.title ?? `New ${activeNotebook.subject} problem`}</h1>
-            {live?.problemText || questionPage ? <p className="nb-problem-text">{blurb}</p> : null}
+            <h1 className="nb-title" id="question-page-title" tabIndex={-1}>{questionPage?.title ?? live?.title ?? `New ${activeNotebook.subject} problem`}</h1>
+            {live?.problemText || questionPage ? <div className="nb-problem-text"><MathResponse text={blurb}/></div> : null}
             <div className="nb-subhead">
               <h3 className="nb-h3">{questionPage?.answers?.responseKind==="symbolic" || questionPage?.answers?.responseKind==="conceptual" ? "Demonstration parameters" : "Given"}</h3>
 
@@ -1098,7 +1115,7 @@ export default function Page() {
               onChange={event=>openSavedQuestion(event.target.value)}
             >
               {questionPage?.notebookId!==notebookId ? <option value="" disabled>{live?.title ?? "Choose a question"}</option> : null}
-              {library.pages.filter(page=>page.notebookId===notebookId).map(page=><option key={page.id} value={page.id}>{page.title}</option>)}
+              {library.pages.filter(page=>page.notebookId===notebookId && !page.archivedAt).map(page=><option key={page.id} value={page.id}>{page.title}</option>)}
             </select>
             {questionPage?.simulations && questionPage.simulations.length>1 ? <select className="nb-select nb-version-picker" aria-label="Simulation version" value={questionPage.selectedSimulation ?? questionPage.simulations.at(-1)?.id} onChange={event=>chooseSimulation(event.target.value)}>{questionPage.simulations.map((version,i)=><option key={version.id} value={version.id}>{i===0?"Original simulation":`Simulation ${i+1}`}</option>)}</select> : null}
             <button type="button" className="nb-btn nb-btn-ghost nb-predict" aria-pressed={predict} onClick={togglePredict} disabled={!live}>
@@ -1170,7 +1187,7 @@ export default function Page() {
             </div>
 
             <div className="nb-video" hidden={view !== "video"}>
-              {live && compiled ? <ExplanationVideo key={questionPage?.id ?? "preset"} scene={withParameterRanges(live,values)} values={values} solution={solution} savedJob={questionPage?.video} onJob={video=>{const id=questionPage?.id;if(id)setQuestionPage(previous=>previous?.id===id ? {...previous,video,simulations:previous.simulations?.map(saved=>saved.id===previous.selectedSimulation ? {...saved,video}:saved)} : previous);}} /> : null}
+              {live && compiled ? <ExplanationVideo key={questionPage?.id ?? "preset"} scene={withParameterRanges(live,values)} values={values} solution={solution} savedJob={questionPage?.video} savedVideos={questionPage?.videoHistory} onJob={video=>{const id=questionPage?.id;if(id)setQuestionPage(previous=>previous?.id===id ? {...previous,video,videoHistory:[...(previous.videoHistory ?? (previous.video?[previous.video]:[])).filter(saved=>saved.id!==video.id),video],simulations:previous.simulations?.map(saved=>saved.id===previous.selectedSimulation ? {...saved,video}:saved)} : previous);}} /> : null}
             </div>
           </div>
           {view==="simulation" ? <div className="nb-playback">{live ? <Timeline

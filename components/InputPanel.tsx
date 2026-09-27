@@ -18,7 +18,7 @@ export interface InputPanelProps {
   subject?: "physics"|"chemistry"|"mathematics";
   notebookId: string;
   initialProblemText?: string;
-  onStarted: (problemText: string) => string;
+  onStarted: (problemText: string, sourceImage?:string|null) => string;
   onAnswers: (result: Omit<SolveResult,"scene">, pageId: string) => void;
   onFailed: (message: string, pageId: string) => void;
   onSolved: (result: SolveResult, pageId: string) => void;
@@ -200,7 +200,7 @@ export default function InputPanel({ initialProblemText = "", subject = "physics
     setBusy(true);
     setError(null);
     setStatus(WORKING_STATUS);
-    const pageId = onStarted(text);
+    const pageId = onStarted(text,image);
     try {
       const payload: unknown = await generateInBackground(pageId,{problemText:text || undefined,image:image ?? undefined,subject,notebookId},result=>{
         onAnswers(result,pageId);
