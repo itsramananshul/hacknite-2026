@@ -77,6 +77,12 @@ Local development can use Gemini, OpenCode, or Ollama. OpenCode and Ollama run o
 | Explanation videos | Python, Manim, FFmpeg, TeX, Windows speech voices or Linux eSpeak |
 | Model backends | Gemini for hosted generation; OpenCode or Ollama for local development |
 
+## License
+
+Chalk's first-party code and assets are available under the [Chalk Individual Noncommercial License 1.0](LICENSE). An individual may download, run, modify, and share Chalk for personal, noncommercial projects under those terms. Companies and other organizations, and anyone using Chalk commercially or for an employer or client, need a separate paid, written license from the Chalk copyright holders.
+
+This is a source-available license, not an open-source license. Third-party components and assets retain their own licenses. The repository license does not govern access to the hosted Chalk service.
+
 ## Run locally
 
 Use Node.js 24 and npm. Install dependencies and copy the example configuration:
